@@ -2600,7 +2600,7 @@ async def main():
     START_TIME = time.time()
 
     log.info("━"*40)
-    log.info("  🔥 𝗣𝗥𝗜𝗠𝗢𝗖𝗣𝗠𝗧𝗢𝗢𝗟 🔥")
+    log.info("  🔥 ILIJASELLCPMTOOL 🔥")
     log.info(f"  Owner:  {OWNER_ID}")
     log.info(f"  Users:  {len(ALLOWED_USERS)}")
     log.info(f"  Brotli: {'✔' if HAS_BROTLI else '✗ pip install brotli'}")
