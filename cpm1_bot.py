@@ -2592,11 +2592,23 @@ async def main():
         BotCommand(command="ping",   description="🏓 Ping"),
     ])
 
+    # ═══════════════════════════════════════════
+    #  🌐 KEEP-ALIVE SERVER (Render)
+    # ═══════════════════════════════════════════
+    from aiohttp import web
+    async def _health(request):
+        return web.Response(text="CPM Bot OK")
+    _app = web.Application()
+    _app.router.add_get("/", _health)
+    _runner = web.AppRunner(_app)
+    await _runner.setup()
+    _port = int(os.environ.get("PORT", 8080))
+    _site = web.TCPSite(_runner, "0.0.0.0", _port)
+    await _site.start()
+    log.info(f"🌐 Keep-alive server on port {_port}")
+
     await dp.start_polling(bot, skip_updates=True)
 
-
-from keep_alive import start_keep_alive
-start_keep_alive()
 
 if __name__ == "__main__":
     try:
