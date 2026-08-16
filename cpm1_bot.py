@@ -70,7 +70,7 @@ threading.Thread(target=_run_server, daemon=True).start()
 #  ⚙️  CONFIG
 # ═══════════════════════════════════════════
 
-BOT_TOKEN = "8681445226:AAEhJ7ytgAXKVayww2lhZn2Bb93Sd9BpOc4"
+BOT_TOKEN = "8682873022:AAGY8z0akQRIH6Igv5FFkQXvm54Lgz8P2bM"
 OWNER_ID  = 8873926995
 
 RATE_LIMIT_ACTIONS = 10
