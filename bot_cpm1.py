@@ -45,8 +45,8 @@ from aiogram.types import (
 #  CONFIG
 # ============================================================
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8905746024:AAEu-MNApDTnIo1jG2Nx5Do-TBYIJbQvAcE")
-OWNER_ID  = 8003371335
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8656972990:AAHptOIiFijHXvmEhMglB8bUcJr0YQQ06Zs")
+OWNER_ID  = 8884756222
 
 RATE_LIMIT_ACTIONS = 10
 RATE_LIMIT_SECONDS = 60
