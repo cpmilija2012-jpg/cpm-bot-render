@@ -45,7 +45,7 @@ from aiogram.types import (
 #  CONFIG
 # ============================================================
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8656972990:AAF77lkHzAz_mR-cg4lDOLIbx57OrAkl96Y")
+BOT_TOKEN = "8656972990:AAF77lkHzAz_mR-cg4lDOLIbx57OrAkl96Y"
 OWNER_ID  = 8884756222
 
 RATE_LIMIT_ACTIONS = 10
@@ -535,11 +535,10 @@ def serialize_player(p):
     return w.to_bytes()
 
 # ============================================================
-#  API (ISPRAVLJENA ZOGDNO SA FORM-DATA I DALVIK HEDERIMA)
+#  API
 # ============================================================
 
 async def api_load_record(session, email="", password=""):
-    # Podaci za slanje sanitizovani bez nepoželjnih praznih mesta
     payload = {
         "email": str(email).strip(),
         "password": str(password).strip(),
@@ -1467,29 +1466,10 @@ async def cb_cancel(call, state):
     await call.message.edit_text("<b>Main Menu</b>", reply_markup=kb_main(is_admin=has_admin(uid)))
 
 # ============================================================
-#  RENDER HEALTH CHECK SERVER
-# ============================================================
-
-async def health_check_server():
-    from aiohttp import web
-    app = web.Application()
-    async def health(request):
-        return web.Response(text="OK", status=200)
-    app.router.add_get("/", health)
-    app.router.add_get("/health", health)
-    port = int(os.environ.get("PORT", 8080))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    log.info(f"Health check server running on port {port}")
-
-# ============================================================
 #  MAIN
 # ============================================================
 
 async def main():
-    await health_check_server()
     await dp.start_polling(bot, drop_pending_updates=True)
 
 if __name__ == "__main__":
