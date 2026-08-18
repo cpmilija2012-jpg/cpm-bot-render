@@ -1479,7 +1479,8 @@ async def health_check_server():
 
 async def main():
     await health_check_server()
-    await dp.start_polling(bot)
+    # Prilagođeno izbacivanje zaostalih veza prilikom pokretanja
+    await dp.start_polling(bot, drop_pending_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
