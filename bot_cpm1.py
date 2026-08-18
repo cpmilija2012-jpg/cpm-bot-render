@@ -48,7 +48,6 @@ from aiogram.types import (
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8656972990:AAHptOIiFijHXvmEhMglB8bUcJr0YQQ06Zs")
 OWNER_ID  = 8884756222
 
-
 RATE_LIMIT_ACTIONS = 10
 RATE_LIMIT_SECONDS = 60
 
@@ -541,11 +540,17 @@ def serialize_player(p):
 
 async def api_load_record(session, email="", password=""):
     payload = {"email": email, "password": password, "fk": FK}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0"
+    }
     try:
-        async with session.post(LOAD_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            if resp.status != 200:
-                return {"success": False, "message": f"Server error (HTTP {resp.status})"}
+        async with session.post(LOAD_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
+            if resp.status != 200:
+                log.error(f"HTTP {resp.status} Load Error: {text}")
+                return {"success": False, "message": f"Server error (HTTP {resp.status}): {text[:100]}"}
+            
             b64, extracted_uid = "", ""
             try:
                 data = json.loads(text)
@@ -564,6 +569,7 @@ async def api_load_record(session, email="", password=""):
                 res["uid"] = extracted_uid
             return res
     except Exception as e:
+        log.error(f"Load record exception: {e}")
         return {"success": False, "message": f"Network error: {str(e)}"}
 
 async def api_save_record(session, uid, record, password="", email=""):
@@ -572,19 +578,35 @@ async def api_save_record(session, uid, record, password="", email=""):
     comp = compress(raw)
     b64 = base64.b64encode(comp).decode()
     payload = {"uid": uid, "password": password, "email": email, "fk": FK, "base64": b64}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0"
+    }
     try:
-        async with session.post(SAVE_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(SAVE_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
+            if resp.status != 200:
+                log.error(f"HTTP {resp.status} Save Error: {text}")
+                return {"success": False, "message": f"Server error (HTTP {resp.status}): {text[:100]}"}
             return {"success": True, "response": text}
     except Exception as e:
+        log.error(f"Save record exception: {e}")
         return {"success": False, "message": str(e)}
 
 async def api_set_rank(session, uid, rank):
     payload = {"uid": uid, "rank": rank, "fk": FK}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0"
+    }
     try:
-        async with session.post(RANK_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            return {"success": resp.status == 200, "response": await resp.text()}
+        async with session.post(RANK_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            text = await resp.text()
+            if resp.status != 200:
+                log.error(f"HTTP {resp.status} Rank Error: {text}")
+            return {"success": resp.status == 200, "response": text}
     except Exception as e:
+        log.error(f"Set rank exception: {e}")
         return {"success": False, "message": str(e)}
 
 # ============================================================
