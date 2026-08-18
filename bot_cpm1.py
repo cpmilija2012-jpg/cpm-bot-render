@@ -1,4 +1,4 @@
-import asyncio
+Import asyncio
 import aiohttp
 import json
 import re
@@ -45,7 +45,7 @@ from aiogram.types import (
 #  CONFIG
 # ============================================================
 
-BOT_TOKEN = "8656972990:AAF77lkHzAz_mR-cg4lDOLIbx57OrAkl96Y"
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8656972990:AAF77lkHzAz_mR-cg4lDOLIbx57OrAkl96Y")
 OWNER_ID  = 8884756222
 
 RATE_LIMIT_ACTIONS = 10
@@ -205,6 +205,14 @@ def store_add_vip(uid):
 def store_remove_vip(uid):
     if uid in VIP_USERS: VIP_USERS.remove(uid); STORE["vip_users"] = VIP_USERS; save_store(STORE)
 
+def store_set_expiry(uid, days):
+    exp = (datetime.utcnow() + timedelta(days=int(days))).isoformat()
+    STORE.setdefault("expiry", {})[str(uid)] = exp
+    save_store(STORE)
+
+def store_remove_expiry(uid):
+    if str(uid) in STORE.get("expiry", {}): del STORE["expiry"][str(uid)]; save_store(STORE)
+
 def admin_log(actor_id, action, target=""):
     STORE.setdefault("admin_log", []).append({
         "time": datetime.utcnow().isoformat(),
@@ -218,17 +226,6 @@ def update_daily_stats(key="actions"):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     STORE.setdefault("daily_stats", {}).setdefault(today, {}).setdefault(key, 0)
     STORE["daily_stats"][today][key] += 1
-    save_store(STORE)
-
-def add_broadcast_history(actor_id, btype, content, sent, failed):
-    STORE.setdefault("broadcast_history", []).append({
-        "time": datetime.utcnow().isoformat(),
-        "actor": actor_id,
-        "type": btype,
-        "content": content,
-        "sent": sent,
-        "failed": failed
-    })
     save_store(STORE)
 
 # ============================================================
@@ -278,10 +275,8 @@ def _md5(t): return hashlib.md5(t.encode()).digest()
 def _sha1(t): return hashlib.sha1(t.encode()).digest()[:16]
 
 def build_aes_keys(uid, password=None, email=None):
-    target = uid if uid else email
-    if not target: return []
-    k1 = _md5(target)
-    k2 = _sha1(target)
+    k1 = _md5(uid)
+    k2 = _sha1(uid)
     k3 = _md5(k1.hex() + k2.hex())
     if password:
         k4 = _sha1(password)
@@ -418,16 +413,9 @@ def try_parse(buf):
     return None
 
 def decrypt_player_record(base64_text, uid, password=None, email=None):
-    try:
-        missing_padding = len(base64_text) % 4
-        if missing_padding:
-            base64_text += '=' * (4 - missing_padding)
-        buf = base64.b64decode(base64_text)
-    except Exception as e:
-        return {"success": False, "message": f"Bad base64 ({str(e)})"}
-        
-    if len(buf) < 10:
-        return {"success": False, "message": "Record data too small"}
+    try: buf = base64.b64decode(base64_text)
+    except: return {"success": False, "message": "Bad base64"}
+    if len(buf) < 10: return {"success": False, "message": "Too small"}
 
     for key in build_aes_keys(uid, password, email):
         dec = decrypt_aes(buf, key)
@@ -435,7 +423,7 @@ def decrypt_player_record(base64_text, uid, password=None, email=None):
             parsed = try_parse(dec)
             if parsed: return {"success": True, "record": parsed}
 
-    xk = make_xor_key(uid or email or "")
+    xk = make_xor_key(uid)
     xdec = xor_bytes(buf, xk)
     parsed = try_parse(xdec)
     if parsed: return {"success": True, "record": parsed}
@@ -445,7 +433,7 @@ def decrypt_player_record(base64_text, uid, password=None, email=None):
             parsed = try_parse(d)
             if parsed: return {"success": True, "record": parsed}
 
-    return {"success": False, "message": "Decryption failed (Wrong credentials/key)"}
+    return {"success": False, "message": "Decryption failed"}
 
 class Writer:
     def __init__(self): self._p = []
@@ -533,90 +521,57 @@ def serialize_player(p):
     w.write_list(p.get("boughtPoliceLights", []), w.write_int)
     w.write_list(p.get("boughtPoliceSirens", []), w.write_int)
     return w.to_bytes()
-
-# ============================================================
+    # ============================================================
 #  API
 # ============================================================
 
-async def api_load_record(session, email="", password=""):
+async def api_load_record(session, uid, password="", email=""):
     payload = {
-        "email": str(email).strip(),
-        "password": str(password).strip(),
-        "fk": FK
-    }
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)"
+        "uid": uid,
+        "password": password,
+        "email": email,
+        "fk": FK,
     }
     try:
-        async with session.post(LOAD_URL, data=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(LOAD_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
-            if resp.status != 200:
-                log.error(f"HTTP {resp.status} Load Error: {text}")
-                return {"success": False, "message": f"Server error (HTTP {resp.status}): {text[:100]}"}
-            
-            b64, extracted_uid = "", ""
             try:
                 data = json.loads(text)
-                if isinstance(data, dict):
-                    if "error" in data: return {"success": False, "message": str(data["error"])}
-                    b64 = data.get("base64") or data.get("record") or ""
-                    extracted_uid = data.get("uid") or ""
-            except json.JSONDecodeError:
-                b64 = text
-
-            b64 = b64.strip().replace("\r", "").replace("\n", "").replace(" ", "")
-            if not b64: return {"success": False, "message": "Empty response from server"}
-
-            res = decrypt_player_record(b64, extracted_uid, password, email)
-            if res.get("success") and extracted_uid:
-                res["uid"] = extracted_uid
-            return res
+            except:
+                data = {"base64": text}
+            b64 = data.get("base64") or data.get("record") or text
+            if not b64 or not isinstance(b64, str):
+                return {"success": False, "message": "Empty response"}
+            return decrypt_player_record(b64, uid, password, email)
     except Exception as e:
-        log.error(f"Load record exception: {e}")
-        return {"success": False, "message": f"Network error: {str(e)}"}
+        return {"success": False, "message": str(e)}
 
 async def api_save_record(session, uid, record, password="", email=""):
     raw = serialize_player(record)
-    if not raw: return {"success": False, "message": "Serialize failed"}
+    if not raw:
+        return {"success": False, "message": "Serialize failed"}
     comp = compress(raw)
     b64 = base64.b64encode(comp).decode()
     payload = {
-        "uid": str(uid).strip(),
-        "password": str(password).strip(),
-        "email": str(email).strip(),
+        "uid": uid,
+        "password": password,
+        "email": email,
         "fk": FK,
-        "base64": b64
-    }
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)"
+        "base64": b64,
     }
     try:
-        async with session.post(SAVE_URL, data=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(SAVE_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
-            if resp.status != 200:
-                log.error(f"HTTP {resp.status} Save Error: {text}")
-                return {"success": False, "message": f"Server error (HTTP {resp.status}): {text[:100]}"}
             return {"success": True, "response": text}
     except Exception as e:
-        log.error(f"Save record exception: {e}")
         return {"success": False, "message": str(e)}
 
 async def api_set_rank(session, uid, rank):
-    payload = {"uid": str(uid).strip(), "rank": rank, "fk": FK}
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)"
-    }
+    payload = {"uid": uid, "rank": rank, "fk": FK}
     try:
-        async with session.post(RANK_URL, data=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            text = await resp.text()
-            if resp.status != 200:
-                log.error(f"HTTP {resp.status} Rank Error: {text}")
-            return {"success": resp.status == 200, "response": text}
+        async with session.post(RANK_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            return {"success": resp.status == 200, "response": await resp.text()}
     except Exception as e:
-        log.error(f"Set rank exception: {e}")
         return {"success": False, "message": str(e)}
 
 # ============================================================
@@ -648,20 +603,26 @@ class InputState(StatesGroup):
     set_id = State()
     change_email = State()
     change_password = State()
+    clone_target = State()
+    copy_plates_target = State()
     buy_car_id = State()
+    police_car_id = State()
+    vinyls_car_id = State()
     race_wins = State()
     race_loses = State()
+    king_rank = State()
     broadcast = State()
     add_user = State()
-    remove_user = State()
     ban_user = State()
     unban_user = State()
     add_admin = State()
     remove_admin = State()
     add_vip = State()
     remove_vip = State()
-    login_email = State()
+    set_expiry = State()
+    login_uid = State()
     login_pass = State()
+    login_email = State()
 
 # ============================================================
 #  KEYBOARDS
@@ -669,79 +630,98 @@ class InputState(StatesGroup):
 
 def kb_main(is_admin=False):
     buttons = [
-        [InlineKeyboardButton(text="🔑 Login", callback_data="do_login"),
-         InlineKeyboardButton(text="💾 Save Account", callback_data="do_save")],
-        [InlineKeyboardButton(text="👤 Account", callback_data="menu_account"),
-         InlineKeyboardButton(text="💰 Stats & Money", callback_data="menu_stats")],
-        [InlineKeyboardButton(text="🚗 Cars & Garage", callback_data="menu_cars"),
-         InlineKeyboardButton(text="🔓 Unlocks & Extras", callback_data="menu_unlocks")],
+        [InlineKeyboardButton(text="Login", callback_data="do_login")],
+        [InlineKeyboardButton(text="Save Account", callback_data="do_save")],
+        [InlineKeyboardButton(text="Account", callback_data="menu_account")],
+        [InlineKeyboardButton(text="Stats & Money", callback_data="menu_stats")],
+        [InlineKeyboardButton(text="Cars & Garage", callback_data="menu_cars")],
+        [InlineKeyboardButton(text="Unlocks & Extras", callback_data="menu_unlocks")],
     ]
     if is_admin:
-        buttons.append([InlineKeyboardButton(text="⚙️ Admin Panel", callback_data="menu_admin")])
+        buttons.append([InlineKeyboardButton(text="Admin Panel", callback_data="menu_admin")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 def kb_account():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="ℹ️ Info", callback_data="acc_info"),
-         InlineKeyboardButton(text="✏️ Set Name", callback_data="acc_set_name")],
-        [InlineKeyboardButton(text="🆔 Set ID", callback_data="acc_set_id"),
-         InlineKeyboardButton(text="📧 Change Email", callback_data="acc_change_email")],
-        [InlineKeyboardButton(text="🔑 Change Password", callback_data="acc_change_password")],
-        [InlineKeyboardButton(text="🔙 Back", callback_data="menu_main")],
+        [InlineKeyboardButton(text="Info", callback_data="acc_info"),
+         InlineKeyboardButton(text="Set Name", callback_data="acc_set_name")],
+        [InlineKeyboardButton(text="Set ID", callback_data="acc_set_id"),
+         InlineKeyboardButton(text="Change Email", callback_data="acc_change_email")],
+        [InlineKeyboardButton(text="Change Password", callback_data="acc_change_password"),
+         InlineKeyboardButton(text="Clone Account", callback_data="acc_clone")],
+        [InlineKeyboardButton(text="Copy Plates", callback_data="acc_copy_plates")],
+        [InlineKeyboardButton(text="Back", callback_data="menu_main")],
     ])
 
 def kb_stats():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💵 Money 50M", callback_data="stat_money_max"),
-         InlineKeyboardButton(text="🪙 Coins 500K", callback_data="stat_coins_max")],
-        [InlineKeyboardButton(text="💵 Custom Money", callback_data="stat_money_custom"),
-         InlineKeyboardButton(text="🪙 Custom Coins", callback_data="stat_coins_custom")],
-        [InlineKeyboardButton(text="🏁 Race Wins", callback_data="stat_race_wins"),
-         InlineKeyboardButton(text="❌ Race Loses", callback_data="stat_race_loses")],
-        [InlineKeyboardButton(text="👑 King Rank", callback_data="stat_king_rank")],
-        [InlineKeyboardButton(text="🔙 Back", callback_data="menu_main")],
+        [InlineKeyboardButton(text="Money 50M", callback_data="stat_money_max"),
+         InlineKeyboardButton(text="Coins 500K", callback_data="stat_coins_max")],
+        [InlineKeyboardButton(text="Custom Money", callback_data="stat_money_custom"),
+         InlineKeyboardButton(text="Custom Coins", callback_data="stat_coins_custom")],
+        [InlineKeyboardButton(text="Race Wins", callback_data="stat_race_wins"),
+         InlineKeyboardButton(text="Race Loses", callback_data="stat_race_loses")],
+        [InlineKeyboardButton(text="King Rank", callback_data="stat_king_rank")],
+        [InlineKeyboardButton(text="Back", callback_data="menu_main")],
     ])
 
 def kb_cars():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚗 Unlock All Cars", callback_data="car_unlock_all"),
-         InlineKeyboardButton(text="🛒 Buy Car (ID)", callback_data="car_buy_id")],
-        [InlineKeyboardButton(text="🔙 Back", callback_data="menu_main")],
+        [InlineKeyboardButton(text="Unlock All Cars", callback_data="car_unlock_all"),
+         InlineKeyboardButton(text="Buy Car (ID)", callback_data="car_buy_id")],
+        [InlineKeyboardButton(text="Bumpers All", callback_data="car_bumpers_all"),
+         InlineKeyboardButton(text="Bumpers Single", callback_data="car_bumpers_single")],
+        [InlineKeyboardButton(text="Chrome All", callback_data="car_chrome_all"),
+         InlineKeyboardButton(text="Chrome Single", callback_data="car_chrome_single")],
+        [InlineKeyboardButton(text="Preset All", callback_data="car_preset_all"),
+         InlineKeyboardButton(text="Preset Single", callback_data="car_preset_single")],
+        [InlineKeyboardButton(text="Police All", callback_data="car_police_all"),
+         InlineKeyboardButton(text="Police Single", callback_data="car_police_single")],
+        [InlineKeyboardButton(text="Clone All", callback_data="car_clone_all"),
+         InlineKeyboardButton(text="Clone Single", callback_data="car_clone_single")],
+        [InlineKeyboardButton(text="Vinyls All", callback_data="car_vinyls_all"),
+         InlineKeyboardButton(text="Vinyls Single", callback_data="car_vinyls_single")],
+        [InlineKeyboardButton(text="Back", callback_data="menu_main")],
     ])
 
 def kb_unlocks():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏎️ W16 Engine", callback_data="unl_w16"),
-         InlineKeyboardButton(text="💨 Smoke & Fuel", callback_data="unl_smoke")],
-        [InlineKeyboardButton(text="🛡️ No Damage", callback_data="unl_nodamage"),
-         InlineKeyboardButton(text="📢 Horns & Anims", callback_data="unl_horns")],
-        [InlineKeyboardButton(text="🏠 All Houses", callback_data="unl_allhouses"),
-         InlineKeyboardButton(text="🚨 Sirens", callback_data="unl_sirens")],
-        [InlineKeyboardButton(text="🎯 All Levels", callback_data="unl_alllevels"),
-         InlineKeyboardButton(text="👕 All Clothes", callback_data="unl_allclothes")],
-        [InlineKeyboardButton(text="🔙 Back", callback_data="menu_main")],
+        [InlineKeyboardButton(text="W16", callback_data="unl_w16"),
+         InlineKeyboardButton(text="Smoke", callback_data="unl_smoke")],
+        [InlineKeyboardButton(text="Fuel", callback_data="unl_fuel"),
+         InlineKeyboardButton(text="No Damage", callback_data="unl_nodamage")],
+        [InlineKeyboardButton(text="Horns", callback_data="unl_horns"),
+         InlineKeyboardButton(text="Animations", callback_data="unl_animations")],
+        [InlineKeyboardButton(text="Perks", callback_data="unl_perks"),
+         InlineKeyboardButton(text="Headlights", callback_data="unl_headlights")],
+        [InlineKeyboardButton(text="Paid House", callback_data="unl_paidhouse"),
+         InlineKeyboardButton(text="All Houses", callback_data="unl_allhouses")],
+        [InlineKeyboardButton(text="Sirens", callback_data="unl_sirens"),
+         InlineKeyboardButton(text="All Levels", callback_data="unl_alllevels")],
+        [InlineKeyboardButton(text="All Clothes", callback_data="unl_allclothes")],
+        [InlineKeyboardButton(text="Back", callback_data="menu_main")],
     ])
 
 def kb_admin():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Add User", callback_data="adm_add_user"),
-         InlineKeyboardButton(text="➖ Remove User", callback_data="adm_remove_user")],
-        [InlineKeyboardButton(text="🚫 Ban", callback_data="adm_ban"),
-         InlineKeyboardButton(text="✅ Unban", callback_data="adm_unban")],
-        [InlineKeyboardButton(text="⭐ Add VIP", callback_data="adm_add_vip"),
-         InlineKeyboardButton(text="❌ Remove VIP", callback_data="adm_remove_vip")],
-        [InlineKeyboardButton(text="👑 Add Admin", callback_data="adm_add_admin"),
-         InlineKeyboardButton(text="🗑️ Remove Admin", callback_data="adm_remove_admin")],
-        [InlineKeyboardButton(text="📢 Broadcast", callback_data="adm_broadcast"),
-         InlineKeyboardButton(text="📊 Stats", callback_data="adm_stats")],
-        [InlineKeyboardButton(text="🛠️ Maintenance", callback_data="adm_maintenance"),
-         InlineKeyboardButton(text="📜 Logs", callback_data="adm_logs")],
-        [InlineKeyboardButton(text="🔙 Back", callback_data="menu_main")],
+        [InlineKeyboardButton(text="Add User", callback_data="adm_add_user"),
+         InlineKeyboardButton(text="Remove User", callback_data="adm_remove_user")],
+        [InlineKeyboardButton(text="Ban", callback_data="adm_ban"),
+         InlineKeyboardButton(text="Unban", callback_data="adm_unban")],
+        [InlineKeyboardButton(text="Add VIP", callback_data="adm_add_vip"),
+         InlineKeyboardButton(text="Remove VIP", callback_data="adm_remove_vip")],
+        [InlineKeyboardButton(text="Add Admin", callback_data="adm_add_admin"),
+         InlineKeyboardButton(text="Remove Admin", callback_data="adm_remove_admin")],
+        [InlineKeyboardButton(text="Broadcast", callback_data="adm_broadcast"),
+         InlineKeyboardButton(text="Stats", callback_data="adm_stats")],
+        [InlineKeyboardButton(text="Maintenance", callback_data="adm_maintenance"),
+         InlineKeyboardButton(text="Logs", callback_data="adm_logs")],
+        [InlineKeyboardButton(text="Back", callback_data="menu_main")],
     ])
 
 def kb_cancel():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Cancel", callback_data="cancel")]
+        [InlineKeyboardButton(text="Cancel", callback_data="cancel")]
     ])
 
 # ============================================================
@@ -811,10 +791,13 @@ async def cmd_start(message, state):
 @router.message(Command("help"))
 async def cmd_help(message):
     if not await check_user(message): return
-    text = "<b>Help</b>\n/start - Main menu\n/help - Help message\n\nLogin first, then use menus to modify your account."
+    text = """<b>Help</b>
+/start - Main menu
+/help - This message
+Login first, then use menus to modify your account."""
     await message.answer(text)
 
-# Menus
+# Main Menu
 
 @router.callback_query(F.data == "menu_main")
 async def cb_main(call, state):
@@ -827,7 +810,7 @@ async def cb_main(call, state):
 async def cb_menu_account(call, state):
     if not await check_callback(call): return
     await state.set_state(MenuState.account)
-    await call.message.edit_text("<b>Account Menu</b>", reply_markup=kb_account())
+    await call.message.edit_text("<b>Account Menu</b>\nLogin first to use features.", reply_markup=kb_account())
 
 @router.callback_query(F.data == "menu_stats")
 async def cb_menu_stats(call, state):
@@ -856,40 +839,48 @@ async def cb_menu_admin(call, state):
     await state.set_state(MenuState.admin)
     await call.message.edit_text("<b>Admin Panel</b>", reply_markup=kb_admin())
 
-# Login & Save Flow
+# Login flow
 
 @router.callback_query(F.data == "do_login")
 async def cb_do_login(call, state):
     if not await check_callback(call): return
-    await state.set_state(InputState.login_email)
-    await call.message.edit_text("Send your Game Email:", reply_markup=kb_cancel())
+    await state.set_state(InputState.login_uid)
+    await call.message.edit_text("Send your Game UID:", reply_markup=kb_cancel())
 
-@router.message(InputState.login_email)
-async def inp_login_email(message, state):
+@router.message(InputState.login_uid)
+async def inp_login_uid(message, state):
     if not await check_user(message): return
-    em = message.text.strip()
-    await state.update_data(login_email=em)
+    await state.update_data(login_uid=message.text.strip())
     await state.set_state(InputState.login_pass)
-    await message.answer("Send your Password:", reply_markup=kb_cancel())
+    await message.answer("Send your Password (or send - to skip):", reply_markup=kb_cancel())
 
 @router.message(InputState.login_pass)
 async def inp_login_pass(message, state):
     if not await check_user(message): return
     pw = message.text.strip()
-    data = await state.get_data()
-    em = data.get("login_email", "")
+    if pw == "-": pw = ""
+    await state.update_data(login_password=pw)
+    await state.set_state(InputState.login_email)
+    await message.answer("Send your Email (or send - to skip):", reply_markup=kb_cancel())
 
-    msg = await message.answer("Loading account...")
+@router.message(InputState.login_email)
+async def inp_login_email(message, state):
+    if not await check_user(message): return
+    em = message.text.strip()
+    if em == "-": em = ""
+    data = await state.get_data()
+    uid = data.get("login_uid", "")
+    pw = data.get("login_password", "")
+    await message.answer("Loading account...")
     async with aiohttp.ClientSession() as session:
-        res = await api_load_record(session, email=em, password=pw)
+        res = await api_load_record(session, uid, pw, em)
     if not res.get("success"):
-        await msg.edit_text(f"Login failed: {escape(res.get('message',''))}")
+        await message.answer(f"Login failed: {escape(res.get('message',''))}")
         await state.set_state(MenuState.main)
         return
     rec = res["record"]
-    uid = res.get("uid", "")
     await state.update_data(record=rec, uid=uid, password=pw, email=em)
-    await msg.edit_text(f"Logged in as <b>{escape(rec.get('Name',''))}</b>\nMoney: {rec.get('money',0):,}\nCoins: {rec.get('coin',0):,}", reply_markup=kb_main(is_admin=has_admin(message.from_user.id)))
+    await message.answer(f"Logged in as <b>{escape(rec.get('Name',''))}</b>\nMoney: {rec.get('money',0):,}\nCoins: {rec.get('coin',0):,}", reply_markup=kb_main(is_admin=has_admin(message.from_user.id)))
     await state.set_state(MenuState.main)
     update_daily_stats("logins")
 
@@ -898,21 +889,21 @@ async def cb_do_save(call, state):
     if not await check_callback(call): return
     data = await state.get_data()
     rec = data.get("record")
-    uid = data.get("uid", "")
-    pw = data.get("password", "") or data.get("login_pass", "")
-    em = data.get("email", "") or data.get("login_email", "")
-    if not rec:
+    uid = data.get("uid")
+    pw = data.get("password", "")
+    em = data.get("email", "")
+    if not rec or not uid:
         await call.answer("Login first!", show_alert=True)
         return
     await call.message.edit_text("Saving account...")
     async with aiohttp.ClientSession() as session:
         res = await api_save_record(session, uid, rec, pw, em)
     if res.get("success"):
-        await call.message.edit_text("Account saved successfully!", reply_markup=kb_main(is_admin=has_admin(call.from_user.id)))
+        await call.message.edit_text("Account saved successfully!")
     else:
-        await call.message.edit_text(f"Save failed: {escape(res.get('message',''))}", reply_markup=kb_main(is_admin=has_admin(call.from_user.id)))
+        await call.message.edit_text(f"Save failed: {escape(res.get('message',''))}")
 
-# Account Handlers
+# Account handlers
 
 @router.callback_query(F.data == "acc_info")
 async def cb_acc_info(call, state):
@@ -923,12 +914,14 @@ async def cb_acc_info(call, state):
         await call.answer("Login first!", show_alert=True)
         return
     text = f"""<b>Account Info</b>
-Name: <code>{escape(str(rec.get('Name','')))}</code>
+Name: <code>{escape(rec.get('Name',''))}</code>
 Money: <code>{rec.get('money',0):,}</code>
 Coins: <code>{rec.get('coin',0):,}</code>
-ID: <code>{escape(str(rec.get('localID','')))}</code>
+ID: <code>{escape(rec.get('localID',''))}</code>
 Cars: <code>{len(rec.get('boughtFsos',[]))}</code>
-Friends: <code>{len(rec.get('FriendsID',[]))}</code>"""
+Friends: <code>{len(rec.get('FriendsID',[]))}</code>
+Animations: <code>{len(rec.get('animations',[]))}</code>
+Wheels: <code>{len(rec.get('wheels',[]))}</code>"""
     await call.message.edit_text(text, reply_markup=kb_account())
 
 @router.callback_query(F.data == "acc_set_name")
@@ -944,7 +937,7 @@ async def inp_set_name(message, state):
     rec = data.get("record")
     if not rec:
         await message.answer("Login first!")
-        return
+        await state.clear(); return
     rec["Name"] = message.text[:32]
     await state.update_data(record=rec)
     await message.answer(f"Name set to: <b>{escape(rec['Name'])}</b>", reply_markup=kb_account())
@@ -963,7 +956,7 @@ async def inp_set_id(message, state):
     rec = data.get("record")
     if not rec:
         await message.answer("Login first!")
-        return
+        await state.clear(); return
     rec["localID"] = message.text[:64]
     await state.update_data(record=rec)
     await message.answer(f"ID set to: <code>{escape(rec['localID'])}</code>", reply_markup=kb_account())
@@ -995,215 +988,14 @@ async def inp_change_password(message, state):
     await message.answer("Password updated for next save.", reply_markup=kb_account())
     await state.set_state(MenuState.account)
 
-# Stats Handlers
-
-@router.callback_query(F.data == "stat_money_max")
-async def cb_stat_money_max(call, state):
-    if not await check_callback(call): return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
-    rec["money"] = MAX_MONEY
-    await state.update_data(record=rec)
-    await call.answer("Money set to 50,000,000!", show_alert=True)
-
-@router.callback_query(F.data == "stat_coins_max")
-async def cb_stat_coins_max(call, state):
-    if not await check_callback(call): return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
-    rec["coin"] = MAX_COIN
-    await state.update_data(record=rec)
-    await call.answer("Coins set to 500,000!", show_alert=True)
-
-@router.callback_query(F.data == "stat_money_custom")
-async def cb_stat_money_custom(call, state):
-    if not await check_callback(call): return
-    await state.set_state(InputState.custom_money)
-    await call.message.edit_text("Enter money amount:", reply_markup=kb_cancel())
-
-@router.message(InputState.custom_money)
-async def inp_custom_money(message, state):
-    if not await check_user(message): return
-    try:
-        val = int(message.text.strip())
-    except:
-        await message.answer("Invalid number!"); return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await message.answer("Login first!"); return
-    rec["money"] = val
-    await state.update_data(record=rec)
-    await message.answer(f"Money set to {val:,}", reply_markup=kb_stats())
-    await state.set_state(MenuState.stats)
-
-@router.callback_query(F.data == "stat_coins_custom")
-async def cb_stat_coins_custom(call, state):
-    if not await check_callback(call): return
-    await state.set_state(InputState.custom_coins)
-    await call.message.edit_text("Enter coins amount:", reply_markup=kb_cancel())
-
-@router.message(InputState.custom_coins)
-async def inp_custom_coins(message, state):
-    if not await check_user(message): return
-    try:
-        val = int(message.text.strip())
-    except:
-        await message.answer("Invalid number!"); return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await message.answer("Login first!"); return
-    rec["coin"] = val
-    await state.update_data(record=rec)
-    await message.answer(f"Coins set to {val:,}", reply_markup=kb_stats())
-    await state.set_state(MenuState.stats)
-
-@router.callback_query(F.data == "stat_race_wins")
-async def cb_stat_race_wins(call, state):
-    if not await check_callback(call): return
-    await state.set_state(InputState.race_wins)
-    await call.message.edit_text("Enter Race Wins count:", reply_markup=kb_cancel())
-
-@router.message(InputState.race_wins)
-async def inp_race_wins(message, state):
-    if not await check_user(message): return
-    try: val = int(message.text.strip())
-    except: await message.answer("Invalid number!"); return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await message.answer("Login first!"); return
-    integers = rec.get("integers", [])
-    while len(integers) < 5: integers.append(0)
-    integers[0] = val
-    rec["integers"] = integers
-    await state.update_data(record=rec)
-    await message.answer(f"Race wins set to {val}", reply_markup=kb_stats())
-    await state.set_state(MenuState.stats)
-
-@router.callback_query(F.data == "stat_race_loses")
-async def cb_stat_race_loses(call, state):
-    if not await check_callback(call): return
-    await state.set_state(InputState.race_loses)
-    await call.message.edit_text("Enter Race Loses count:", reply_markup=kb_cancel())
-
-@router.message(InputState.race_loses)
-async def inp_race_loses(message, state):
-    if not await check_user(message): return
-    try: val = int(message.text.strip())
-    except: await message.answer("Invalid number!"); return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await message.answer("Login first!"); return
-    integers = rec.get("integers", [])
-    while len(integers) < 5: integers.append(0)
-    integers[1] = val
-    rec["integers"] = integers
-    await state.update_data(record=rec)
-    await message.answer(f"Race loses set to {val}", reply_markup=kb_stats())
-    await state.set_state(MenuState.stats)
-
-@router.callback_query(F.data == "stat_king_rank")
-async def cb_stat_king_rank(call, state):
-    if not await check_callback(call): return
-    data = await state.get_data()
-    uid = data.get("uid")
-    if not uid: await call.answer("Login first!", show_alert=True); return
-    async with aiohttp.ClientSession() as session:
-        res = await api_set_rank(session, uid, "king")
-    if res.get("success"):
-        await call.answer("King rank set successfully!", show_alert=True)
-    else:
-        await call.answer("Failed to set rank.", show_alert=True)
-
-# Cars Handlers
-
-@router.callback_query(F.data == "car_unlock_all")
-async def cb_car_unlock_all(call, state):
-    if not await check_callback(call): return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
-    rec["boughtFsos"] = list(CAR_IDS)
-    await state.update_data(record=rec)
-    await call.answer("All Cars Unlocked!", show_alert=True)
-
-@router.callback_query(F.data == "car_buy_id")
-async def cb_car_buy_id(call, state):
-    if not await check_callback(call): return
-    await state.set_state(InputState.buy_car_id)
-    await call.message.edit_text("Enter Car ID to unlock:", reply_markup=kb_cancel())
-
-@router.message(InputState.buy_car_id)
-async def inp_buy_car_id(message, state):
-    if not await check_user(message): return
-    try: cid = int(message.text.strip())
-    except: await message.answer("Invalid Car ID!"); return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await message.answer("Login first!"); return
-    bought = rec.get("boughtFsos", [])
-    if cid not in bought: bought.append(cid)
-    rec["boughtFsos"] = bought
-    await state.update_data(record=rec)
-    await message.answer(f"Car ID {cid} unlocked!", reply_markup=kb_cars())
-    await state.set_state(MenuState.cars)
-
-# Unlocks Handlers
-
-@router.callback_query(F.data == "unl_w16")
-async def cb_unl_w16(call, state):
-    if not await check_callback(call): return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
-    flags = rec.get("flags", {})
-    flags["w16"] = "1"
-    rec["flags"] = flags
-    await state.update_data(record=rec)
-    await call.answer("W16 Engine Unlocked!", show_alert=True)
-
-@router.callback_query(F.data == "unl_smoke")
-async def cb_unl_smoke(call, state):
-    if not await check_callback(call): return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
-    flags = rec.get("flags", {})
-    flags["smoke"] = "1"
-    flags["fuel"] = "1"
-    rec["flags"] = flags
-    await state.update_data(record=rec)
-    await call.answer("Smoke & Fuel Unlocked!", show_alert=True)
-
-@router.callback_query(F.data == "unl_nodamage")
-async def cb_unl_nodamage(call, state):
-    if not await check_callback(call): return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
-    flags = rec.get("flags", {})
-    flags["nodamage"] = "1"
-    rec["flags"] = flags
-    await state.update_data(record=rec)
-    await call.answer("No Damage Unlocked!", show_alert=True)
-
-@router.callback_query(F.data == "unl_horns")
-async def cb_unl_horns(call, state):
-    if not await check_callback(call): return
-    data = await state.get_data()
-    rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
-    rec["animations"] = list(range(1, 50))
-    await state.update_data(record=rec)
-    await call.answer("Horns & Animations Unlocked!", show_alert=True)
-
+@router.callback_query
 @router.callback_query(F.data == "unl_allhouses")
 async def cb_unl_allhouses(call, state):
     if not await check_callback(call): return
     data = await state.get_data()
     rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
+    if not rec:
+        await call.answer("Login first!", show_alert=True); return
     flags = rec.get("flags", {}); flags["allhouses"] = "1"; rec["flags"] = flags
     await state.update_data(record=rec)
     await call.answer("All Houses unlocked", show_alert=True)
@@ -1213,7 +1005,8 @@ async def cb_unl_sirens(call, state):
     if not await check_callback(call): return
     data = await state.get_data()
     rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
+    if not rec:
+        await call.answer("Login first!", show_alert=True); return
     rec["boughtPoliceLights"] = list(range(1,50))
     rec["boughtPoliceSirens"] = list(range(1,50))
     await state.update_data(record=rec)
@@ -1224,7 +1017,8 @@ async def cb_unl_alllevels(call, state):
     if not await check_callback(call): return
     data = await state.get_data()
     rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
+    if not rec:
+        await call.answer("Login first!", show_alert=True); return
     rec["LevelsDoneTime"] = [1.0]*50
     await state.update_data(record=rec)
     await call.answer("All Levels unlocked", show_alert=True)
@@ -1234,10 +1028,11 @@ async def cb_unl_allclothes(call, state):
     if not await check_callback(call): return
     data = await state.get_data()
     rec = data.get("record")
-    if not rec: await call.answer("Login first!", show_alert=True); return
+    if not rec:
+        await call.answer("Login first!", show_alert=True); return
     male = []
     female = []
-    for i in range(1, 200):
+    for i in range(1,200):
         male.append({"type": 0, "id": i, "color": 0})
         female.append({"type": 0, "id": i, "color": 0})
     rec["personEquipmentsMale"] = male
@@ -1245,7 +1040,7 @@ async def cb_unl_allclothes(call, state):
     await state.update_data(record=rec)
     await call.answer("All Clothes unlocked", show_alert=True)
 
-# Admin Handlers
+# Admin handlers
 
 @router.callback_query(F.data == "adm_add_user")
 async def cb_adm_add_user(call, state):
@@ -1270,18 +1065,8 @@ async def cb_adm_remove_user(call, state):
     if not await check_callback(call): return
     if not has_admin(call.from_user.id, "admin"):
         await call.answer("No access", show_alert=True); return
-    await state.set_state(InputState.remove_user)
+    await state.set_state(InputState.add_user)
     await call.message.edit_text("Send User ID to remove:", reply_markup=kb_cancel())
-
-@router.message(InputState.remove_user)
-async def inp_remove_user(message, state):
-    if not await check_user(message): return
-    try: uid = int(message.text.strip())
-    except: await message.answer("Invalid ID!"); return
-    store_remove_user(uid)
-    admin_log(message.from_user.id, "remove_user", str(uid))
-    await message.answer(f"User {uid} removed.", reply_markup=kb_admin())
-    await state.set_state(MenuState.admin)
 
 @router.callback_query(F.data == "adm_ban")
 async def cb_adm_ban(call, state):
@@ -1403,7 +1188,8 @@ async def cb_adm_broadcast(call, state):
 async def inp_broadcast(message, state):
     if not await check_user(message): return
     text = message.text
-    sent, failed = 0, 0
+    sent = 0
+    failed = 0
     for uid in ALLOWED_USERS:
         try:
             await bot.send_message(uid, f"<b>Broadcast</b>\n{text}")
@@ -1453,11 +1239,11 @@ async def cb_adm_logs(call, state):
     logs = STORE.get("admin_log", [])[-20:]
     text = "<b>Recent Admin Logs</b>\n"
     for log_entry in logs:
-        text += f"\n{escape(str(log_entry.get('action','')))} by {log_entry.get('actor','')} -> {escape(str(log_entry.get('target','')))}"
+        text += f"\n{escape(log_entry.get('action',''))} by {log_entry.get('actor','')} -> {escape(log_entry.get('target',''))}"
     if len(text) > 4000: text = text[:4000]
     await call.message.edit_text(text, reply_markup=kb_admin())
 
-# Cancel Handler
+# Cancel handler
 
 @router.callback_query(F.data == "cancel")
 async def cb_cancel(call, state):
@@ -1470,7 +1256,7 @@ async def cb_cancel(call, state):
 # ============================================================
 
 async def main():
-    await dp.start_polling(bot, drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
