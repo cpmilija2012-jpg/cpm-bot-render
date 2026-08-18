@@ -535,17 +535,22 @@ def serialize_player(p):
     return w.to_bytes()
 
 # ============================================================
-#  API
+#  API (ISPRAVLJENA ZOGDNO SA FORM-DATA I DALVIK HEDERIMA)
 # ============================================================
 
 async def api_load_record(session, email="", password=""):
-    payload = {"email": email, "password": password, "fk": FK}
+    # Podaci za slanje sanitizovani bez nepoželjnih praznih mesta
+    payload = {
+        "email": str(email).strip(),
+        "password": str(password).strip(),
+        "fk": FK
+    }
     headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0"
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)"
     }
     try:
-        async with session.post(LOAD_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(LOAD_URL, data=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
             if resp.status != 200:
                 log.error(f"HTTP {resp.status} Load Error: {text}")
@@ -555,7 +560,7 @@ async def api_load_record(session, email="", password=""):
             try:
                 data = json.loads(text)
                 if isinstance(data, dict):
-                    if "error" in data: return {"success": False, "message": data["error"]}
+                    if "error" in data: return {"success": False, "message": str(data["error"])}
                     b64 = data.get("base64") or data.get("record") or ""
                     extracted_uid = data.get("uid") or ""
             except json.JSONDecodeError:
@@ -577,13 +582,19 @@ async def api_save_record(session, uid, record, password="", email=""):
     if not raw: return {"success": False, "message": "Serialize failed"}
     comp = compress(raw)
     b64 = base64.b64encode(comp).decode()
-    payload = {"uid": uid, "password": password, "email": email, "fk": FK, "base64": b64}
+    payload = {
+        "uid": str(uid).strip(),
+        "password": str(password).strip(),
+        "email": str(email).strip(),
+        "fk": FK,
+        "base64": b64
+    }
     headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0"
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)"
     }
     try:
-        async with session.post(SAVE_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(SAVE_URL, data=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
             if resp.status != 200:
                 log.error(f"HTTP {resp.status} Save Error: {text}")
@@ -594,13 +605,13 @@ async def api_save_record(session, uid, record, password="", email=""):
         return {"success": False, "message": str(e)}
 
 async def api_set_rank(session, uid, rank):
-    payload = {"uid": uid, "rank": rank, "fk": FK}
+    payload = {"uid": str(uid).strip(), "rank": rank, "fk": FK}
     headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0"
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 12; Build/SQ3A.220705.004)"
     }
     try:
-        async with session.post(RANK_URL, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(RANK_URL, data=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
             if resp.status != 200:
                 log.error(f"HTTP {resp.status} Rank Error: {text}")
@@ -1479,7 +1490,6 @@ async def health_check_server():
 
 async def main():
     await health_check_server()
-    # Prilagođeno izbacivanje zaostalih veza prilikom pokretanja
     await dp.start_polling(bot, drop_pending_updates=True)
 
 if __name__ == "__main__":
