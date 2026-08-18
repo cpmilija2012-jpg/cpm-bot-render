@@ -228,6 +228,17 @@ def update_daily_stats(key="actions"):
     STORE["daily_stats"][today][key] += 1
     save_store(STORE)
 
+def add_broadcast_history(actor_id, btype, content, sent, failed):
+    STORE.setdefault("broadcast_history", []).append({
+        "time": datetime.utcnow().isoformat(),
+        "actor": actor_id,
+        "type": btype,
+        "content": content,
+        "sent": sent,
+        "failed": failed
+    })
+    save_store(STORE)
+
 # ============================================================
 #  CRYPTO / DECODE
 # ============================================================
@@ -413,9 +424,16 @@ def try_parse(buf):
     return None
 
 def decrypt_player_record(base64_text, uid, password=None, email=None):
-    try: buf = base64.b64decode(base64_text)
-    except: return {"success": False, "message": "Bad base64"}
-    if len(buf) < 10: return {"success": False, "message": "Too small"}
+    try:
+        missing_padding = len(base64_text) % 4
+        if missing_padding:
+            base64_text += '=' * (4 - missing_padding)
+        buf = base64.b64decode(base64_text)
+    except Exception as e:
+        return {"success": False, "message": f"Bad base64 ({str(e)})"}
+        
+    if len(buf) < 10:
+        return {"success": False, "message": "Record data too small"}
 
     for key in build_aes_keys(uid, password, email):
         dec = decrypt_aes(buf, key)
@@ -433,7 +451,7 @@ def decrypt_player_record(base64_text, uid, password=None, email=None):
             parsed = try_parse(d)
             if parsed: return {"success": True, "record": parsed}
 
-    return {"success": False, "message": "Decryption failed"}
+    return {"success": False, "message": "Decryption failed (Wrong credentials/key)"}
 
 class Writer:
     def __init__(self): self._p = []
@@ -521,7 +539,8 @@ def serialize_player(p):
     w.write_list(p.get("boughtPoliceLights", []), w.write_int)
     w.write_list(p.get("boughtPoliceSirens", []), w.write_int)
     return w.to_bytes()
-    # ============================================================
+
+# ============================================================
 #  API
 # ============================================================
 
@@ -534,17 +553,29 @@ async def api_load_record(session, uid, password="", email=""):
     }
     try:
         async with session.post(LOAD_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            if resp.status != 200:
+                return {"success": False, "message": f"Server error (HTTP {resp.status})"}
+            
             text = await resp.text()
+            b64 = ""
+            
             try:
                 data = json.loads(text)
-            except:
-                data = {"base64": text}
-            b64 = data.get("base64") or data.get("record") or text
-            if not b64 or not isinstance(b64, str):
-                return {"success": False, "message": "Empty response"}
+                if isinstance(data, dict):
+                    if "error" in data:
+                        return {"success": False, "message": data["error"]}
+                    b64 = data.get("base64") or data.get("record") or ""
+            except json.JSONDecodeError:
+                b64 = text
+
+            b64 = b64.strip().replace("\r", "").replace("\n", "").replace(" ", "")
+
+            if not b64:
+                return {"success": False, "message": "Empty response from server"}
+
             return decrypt_player_record(b64, uid, password, email)
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": f"Network error: {str(e)}"}
 
 async def api_save_record(session, uid, record, password="", email=""):
     raw = serialize_player(record)
@@ -613,6 +644,7 @@ class InputState(StatesGroup):
     king_rank = State()
     broadcast = State()
     add_user = State()
+    remove_user = State()
     ban_user = State()
     unban_user = State()
     add_admin = State()
@@ -988,7 +1020,8 @@ async def inp_change_password(message, state):
     await message.answer("Password updated for next save.", reply_markup=kb_account())
     await state.set_state(MenuState.account)
 
-@router.callback_query
+# Unlocks handlers
+
 @router.callback_query(F.data == "unl_allhouses")
 async def cb_unl_allhouses(call, state):
     if not await check_callback(call): return
@@ -1065,8 +1098,18 @@ async def cb_adm_remove_user(call, state):
     if not await check_callback(call): return
     if not has_admin(call.from_user.id, "admin"):
         await call.answer("No access", show_alert=True); return
-    await state.set_state(InputState.add_user)
+    await state.set_state(InputState.remove_user)
     await call.message.edit_text("Send User ID to remove:", reply_markup=kb_cancel())
+
+@router.message(InputState.remove_user)
+async def inp_remove_user(message, state):
+    if not await check_user(message): return
+    try: uid = int(message.text.strip())
+    except: await message.answer("Invalid ID!"); return
+    store_remove_user(uid)
+    admin_log(message.from_user.id, "remove_user", str(uid))
+    await message.answer(f"User {uid} removed.", reply_markup=kb_admin())
+    await state.set_state(MenuState.admin)
 
 @router.callback_query(F.data == "adm_ban")
 async def cb_adm_ban(call, state):
@@ -1252,10 +1295,29 @@ async def cb_cancel(call, state):
     await call.message.edit_text("<b>Main Menu</b>", reply_markup=kb_main(is_admin=has_admin(uid)))
 
 # ============================================================
+#  RENDER HEALTH CHECK SERVER (keeps service alive)
+# ============================================================
+
+async def health_check_server():
+    from aiohttp import web
+    app = web.Application()
+    async def health(request):
+        return web.Response(text="OK", status=200)
+    app.router.add_get("/", health)
+    app.router.add_get("/health", health)
+    port = int(os.environ.get("PORT", 8080))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    log.info(f"Health check server running on port {port}")
+
+# ============================================================
 #  MAIN
 # ============================================================
 
 async def main():
+    await health_check_server()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
