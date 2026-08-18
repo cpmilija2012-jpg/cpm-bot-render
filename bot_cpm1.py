@@ -45,8 +45,8 @@ from aiogram.types import (
 #  CONFIG
 # ============================================================
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8656972990:AAHptOIiFijHXvmEhMglB8bUcJr0YQQ06Zs")
-OWNER_ID  = 8884756222
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8905746024:AAEu-MNApDTnIo1jG2Nx5Do-TBYIJbQvAcE")
+OWNER_ID  = 8003371335
 
 RATE_LIMIT_ACTIONS = 10
 RATE_LIMIT_SECONDS = 60
@@ -286,8 +286,9 @@ def _md5(t): return hashlib.md5(t.encode()).digest()
 def _sha1(t): return hashlib.sha1(t.encode()).digest()[:16]
 
 def build_aes_keys(uid, password=None, email=None):
-    k1 = _md5(uid)
-    k2 = _sha1(uid)
+    target = uid if uid else email
+    k1 = _md5(target)
+    k2 = _sha1(target)
     k3 = _md5(k1.hex() + k2.hex())
     if password:
         k4 = _sha1(password)
@@ -441,7 +442,7 @@ def decrypt_player_record(base64_text, uid, password=None, email=None):
             parsed = try_parse(dec)
             if parsed: return {"success": True, "record": parsed}
 
-    xk = make_xor_key(uid)
+    xk = make_xor_key(uid or email)
     xdec = xor_bytes(buf, xk)
     parsed = try_parse(xdec)
     if parsed: return {"success": True, "record": parsed}
@@ -544,11 +545,10 @@ def serialize_player(p):
 #  API
 # ============================================================
 
-async def api_load_record(session, uid, password="", email=""):
+async def api_load_record(session, email="", password=""):
     payload = {
-        "uid": uid,
-        "password": password,
         "email": email,
+        "password": password,
         "fk": FK,
     }
     try:
@@ -558,6 +558,7 @@ async def api_load_record(session, uid, password="", email=""):
             
             text = await resp.text()
             b64 = ""
+            extracted_uid = ""
             
             try:
                 data = json.loads(text)
@@ -565,6 +566,7 @@ async def api_load_record(session, uid, password="", email=""):
                     if "error" in data:
                         return {"success": False, "message": data["error"]}
                     b64 = data.get("base64") or data.get("record") or ""
+                    extracted_uid = data.get("uid") or ""
             except json.JSONDecodeError:
                 b64 = text
 
@@ -573,7 +575,10 @@ async def api_load_record(session, uid, password="", email=""):
             if not b64:
                 return {"success": False, "message": "Empty response from server"}
 
-            return decrypt_player_record(b64, uid, password, email)
+            res = decrypt_player_record(b64, extracted_uid, password, email)
+            if res.get("success") and extracted_uid:
+                res["uid"] = extracted_uid
+            return res
     except Exception as e:
         return {"success": False, "message": f"Network error: {str(e)}"}
 
@@ -652,9 +657,8 @@ class InputState(StatesGroup):
     add_vip = State()
     remove_vip = State()
     set_expiry = State()
-    login_uid = State()
-    login_pass = State()
     login_email = State()
+    login_pass = State()
 
 # ============================================================
 #  KEYBOARDS
@@ -871,46 +875,38 @@ async def cb_menu_admin(call, state):
     await state.set_state(MenuState.admin)
     await call.message.edit_text("<b>Admin Panel</b>", reply_markup=kb_admin())
 
-# Login flow
+# Login flow (SAMO EMAIL I PASSWORD)
 
 @router.callback_query(F.data == "do_login")
 async def cb_do_login(call, state):
     if not await check_callback(call): return
-    await state.set_state(InputState.login_uid)
-    await call.message.edit_text("Send your Game UID:", reply_markup=kb_cancel())
-
-@router.message(InputState.login_uid)
-async def inp_login_uid(message, state):
-    if not await check_user(message): return
-    await state.update_data(login_uid=message.text.strip())
-    await state.set_state(InputState.login_pass)
-    await message.answer("Send your Password (or send - to skip):", reply_markup=kb_cancel())
-
-@router.message(InputState.login_pass)
-async def inp_login_pass(message, state):
-    if not await check_user(message): return
-    pw = message.text.strip()
-    if pw == "-": pw = ""
-    await state.update_data(login_password=pw)
     await state.set_state(InputState.login_email)
-    await message.answer("Send your Email (or send - to skip):", reply_markup=kb_cancel())
+    await call.message.edit_text("Send your Game Email:", reply_markup=kb_cancel())
 
 @router.message(InputState.login_email)
 async def inp_login_email(message, state):
     if not await check_user(message): return
     em = message.text.strip()
-    if em == "-": em = ""
+    await state.update_data(login_email=em)
+    await state.set_state(InputState.login_pass)
+    await message.answer("Send your Password:", reply_markup=kb_cancel())
+
+@router.message(InputState.login_pass)
+async def inp_login_pass(message, state):
+    if not await check_user(message): return
+    pw = message.text.strip()
     data = await state.get_data()
-    uid = data.get("login_uid", "")
-    pw = data.get("login_password", "")
+    em = data.get("login_email", "")
+
     await message.answer("Loading account...")
     async with aiohttp.ClientSession() as session:
-        res = await api_load_record(session, uid, pw, em)
+        res = await api_load_record(session, email=em, password=pw)
     if not res.get("success"):
         await message.answer(f"Login failed: {escape(res.get('message',''))}")
         await state.set_state(MenuState.main)
         return
     rec = res["record"]
+    uid = res.get("uid", "")
     await state.update_data(record=rec, uid=uid, password=pw, email=em)
     await message.answer(f"Logged in as <b>{escape(rec.get('Name',''))}</b>\nMoney: {rec.get('money',0):,}\nCoins: {rec.get('coin',0):,}", reply_markup=kb_main(is_admin=has_admin(message.from_user.id)))
     await state.set_state(MenuState.main)
@@ -921,10 +917,10 @@ async def cb_do_save(call, state):
     if not await check_callback(call): return
     data = await state.get_data()
     rec = data.get("record")
-    uid = data.get("uid")
+    uid = data.get("uid", "")
     pw = data.get("password", "")
     em = data.get("email", "")
-    if not rec or not uid:
+    if not rec:
         await call.answer("Login first!", show_alert=True)
         return
     await call.message.edit_text("Saving account...")
