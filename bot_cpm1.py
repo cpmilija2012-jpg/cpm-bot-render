@@ -1,4 +1,4 @@
-Import asyncio
+import asyncio
 import aiohttp
 import json
 import re
@@ -45,7 +45,7 @@ from aiogram.types import (
 #  CONFIG
 # ============================================================
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8656972990:AAF77lkHzAz_mR-cg4lDOLIbx57OrAkl96Y")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8682873022:AAGY8z0akQRIH6Igv5FFkQXvm54Lgz8P2bM")
 OWNER_ID  = 8884756222
 
 RATE_LIMIT_ACTIONS = 10
@@ -219,6 +219,17 @@ def admin_log(actor_id, action, target=""):
         "actor": actor_id,
         "action": action,
         "target": target
+    })
+    save_store(STORE)
+
+def add_broadcast_history(actor_id, b_type, text, sent, failed):
+    STORE.setdefault("broadcast_history", []).append({
+        "time": datetime.utcnow().isoformat(),
+        "actor": actor_id,
+        "type": b_type,
+        "text": text,
+        "sent": sent,
+        "failed": failed
     })
     save_store(STORE)
 
@@ -521,7 +532,8 @@ def serialize_player(p):
     w.write_list(p.get("boughtPoliceLights", []), w.write_int)
     w.write_list(p.get("boughtPoliceSirens", []), w.write_int)
     return w.to_bytes()
-    # ============================================================
+
+# ============================================================
 #  API
 # ============================================================
 
@@ -647,9 +659,7 @@ def kb_account():
          InlineKeyboardButton(text="Set Name", callback_data="acc_set_name")],
         [InlineKeyboardButton(text="Set ID", callback_data="acc_set_id"),
          InlineKeyboardButton(text="Change Email", callback_data="acc_change_email")],
-        [InlineKeyboardButton(text="Change Password", callback_data="acc_change_password"),
-         InlineKeyboardButton(text="Clone Account", callback_data="acc_clone")],
-        [InlineKeyboardButton(text="Copy Plates", callback_data="acc_copy_plates")],
+        [InlineKeyboardButton(text="Change Password", callback_data="acc_change_password")],
         [InlineKeyboardButton(text="Back", callback_data="menu_main")],
     ])
 
@@ -657,48 +667,21 @@ def kb_stats():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Money 50M", callback_data="stat_money_max"),
          InlineKeyboardButton(text="Coins 500K", callback_data="stat_coins_max")],
-        [InlineKeyboardButton(text="Custom Money", callback_data="stat_money_custom"),
-         InlineKeyboardButton(text="Custom Coins", callback_data="stat_coins_custom")],
-        [InlineKeyboardButton(text="Race Wins", callback_data="stat_race_wins"),
-         InlineKeyboardButton(text="Race Loses", callback_data="stat_race_loses")],
-        [InlineKeyboardButton(text="King Rank", callback_data="stat_king_rank")],
         [InlineKeyboardButton(text="Back", callback_data="menu_main")],
     ])
 
 def kb_cars():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Unlock All Cars", callback_data="car_unlock_all"),
-         InlineKeyboardButton(text="Buy Car (ID)", callback_data="car_buy_id")],
-        [InlineKeyboardButton(text="Bumpers All", callback_data="car_bumpers_all"),
-         InlineKeyboardButton(text="Bumpers Single", callback_data="car_bumpers_single")],
-        [InlineKeyboardButton(text="Chrome All", callback_data="car_chrome_all"),
-         InlineKeyboardButton(text="Chrome Single", callback_data="car_chrome_single")],
-        [InlineKeyboardButton(text="Preset All", callback_data="car_preset_all"),
-         InlineKeyboardButton(text="Preset Single", callback_data="car_preset_single")],
-        [InlineKeyboardButton(text="Police All", callback_data="car_police_all"),
-         InlineKeyboardButton(text="Police Single", callback_data="car_police_single")],
-        [InlineKeyboardButton(text="Clone All", callback_data="car_clone_all"),
-         InlineKeyboardButton(text="Clone Single", callback_data="car_clone_single")],
-        [InlineKeyboardButton(text="Vinyls All", callback_data="car_vinyls_all"),
-         InlineKeyboardButton(text="Vinyls Single", callback_data="car_vinyls_single")],
+        [InlineKeyboardButton(text="Unlock All Cars", callback_data="car_unlock_all")],
         [InlineKeyboardButton(text="Back", callback_data="menu_main")],
     ])
 
 def kb_unlocks():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="W16", callback_data="unl_w16"),
-         InlineKeyboardButton(text="Smoke", callback_data="unl_smoke")],
-        [InlineKeyboardButton(text="Fuel", callback_data="unl_fuel"),
-         InlineKeyboardButton(text="No Damage", callback_data="unl_nodamage")],
-        [InlineKeyboardButton(text="Horns", callback_data="unl_horns"),
-         InlineKeyboardButton(text="Animations", callback_data="unl_animations")],
-        [InlineKeyboardButton(text="Perks", callback_data="unl_perks"),
-         InlineKeyboardButton(text="Headlights", callback_data="unl_headlights")],
-        [InlineKeyboardButton(text="Paid House", callback_data="unl_paidhouse"),
-         InlineKeyboardButton(text="All Houses", callback_data="unl_allhouses")],
-        [InlineKeyboardButton(text="Sirens", callback_data="unl_sirens"),
-         InlineKeyboardButton(text="All Levels", callback_data="unl_alllevels")],
-        [InlineKeyboardButton(text="All Clothes", callback_data="unl_allclothes")],
+        [InlineKeyboardButton(text="All Houses", callback_data="unl_allhouses"),
+         InlineKeyboardButton(text="Sirens", callback_data="unl_sirens")],
+        [InlineKeyboardButton(text="All Levels", callback_data="unl_alllevels"),
+         InlineKeyboardButton(text="All Clothes", callback_data="unl_allclothes")],
         [InlineKeyboardButton(text="Back", callback_data="menu_main")],
     ])
 
@@ -988,7 +971,43 @@ async def inp_change_password(message, state):
     await message.answer("Password updated for next save.", reply_markup=kb_account())
     await state.set_state(MenuState.account)
 
-@router.callback_query
+# Stat Modifiers
+
+@router.callback_query(F.data == "stat_money_max")
+async def cb_stat_money_max(call, state):
+    if not await check_callback(call): return
+    data = await state.get_data()
+    rec = data.get("record")
+    if not rec:
+        await call.answer("Login first!", show_alert=True); return
+    rec["money"] = MAX_MONEY
+    await state.update_data(record=rec)
+    await call.answer("Money set to 50,000,000", show_alert=True)
+
+@router.callback_query(F.data == "stat_coins_max")
+async def cb_stat_coins_max(call, state):
+    if not await check_callback(call): return
+    data = await state.get_data()
+    rec = data.get("record")
+    if not rec:
+        await call.answer("Login first!", show_alert=True); return
+    rec["coin"] = MAX_COIN
+    await state.update_data(record=rec)
+    await call.answer("Coins set to 500,000", show_alert=True)
+
+# Car and Unlocks
+
+@router.callback_query(F.data == "car_unlock_all")
+async def cb_car_unlock_all(call, state):
+    if not await check_callback(call): return
+    data = await state.get_data()
+    rec = data.get("record")
+    if not rec:
+        await call.answer("Login first!", show_alert=True); return
+    rec["boughtFsos"] = list(CAR_IDS)
+    await state.update_data(record=rec)
+    await call.answer("All Cars unlocked", show_alert=True)
+
 @router.callback_query(F.data == "unl_allhouses")
 async def cb_unl_allhouses(call, state):
     if not await check_callback(call): return
