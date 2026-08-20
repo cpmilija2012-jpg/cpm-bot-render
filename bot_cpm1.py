@@ -903,7 +903,8 @@ class CPMNuker:
         for idx,val in indices_values: it[idx]=int(val)
         d["integers"]=it
         return await self._save(uid,d)
-        async def unlock_all_cars(self, uid):
+        
+    async def unlock_all_cars(self, uid):
         await self.load(uid)
         td    = self.get_token_data(uid)
         email = td.get("email") if td else None
@@ -938,7 +939,6 @@ class CPMNuker:
         d["carIDnStatus"]["carStatus"] = c_status
         d["carIDnStatus"]["carGeneratedIDs"] = c_ids
         return await self._save(uid,d)
-
 
     async def set_money(self, uid, amount):
         return await self._modify(uid, {"money": min(amount, MAX_MONEY)})
