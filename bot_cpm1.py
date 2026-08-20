@@ -58,16 +58,21 @@ RANK_URL = "https://us-central1-cp-multiplayer.cloudfunctions.net/SetUserRating4
 MAX_MONEY = 50_000_000
 MAX_COIN  = 500_000
 
-CAR_IDS = [59,133,132,13,53,99,100,102,37,21,48,77,74,2,23,51,163,186,158,55,
-           60,61,62,63,64,65,66,67,68,69,70,71,72,73,75,76,78,79,80,81,82,83,
-           84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,101,103,104,105,106,
-           107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,
-           124,125,126,127,128,129,130,131,134,135,136,137,138,139,140,141,142,
-           143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,159,160,
-           161,162,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,
-           179,180,181,182,183,184,185,187,188,189,190,191,192,193,194,195,196,
-           197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,
-           214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230]
+CAR_IDS = [
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,19,20,21,22,23,24,
+    27,28,29,30,31,32,35,37,39,40,41,42,43,44,45,47,48,49,51,53,
+    54,55,56,57,58,59,60,61,62,65,70,75,76,77,81,82,83,84,85,86,
+    87,88,89,100,101,102,103,104,105,106,107,108,109,110,111,112,
+    113,114,115,116,117,118,119,120,121,123,124,125,126,127,128,
+    129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,
+    144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,
+    159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,
+    175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,
+    190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,
+    205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,
+    220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,
+    235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,
+    251,252,253,254,255,256,257,258,259,260,261,262]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -898,8 +903,7 @@ class CPMNuker:
         for idx,val in indices_values: it[idx]=int(val)
         d["integers"]=it
         return await self._save(uid,d)
-
-    async def unlock_all_cars(self, uid):
+        async def unlock_all_cars(self, uid):
         await self.load(uid)
         td    = self.get_token_data(uid)
         email = td.get("email") if td else None
@@ -907,8 +911,11 @@ class CPMNuker:
         if not d or not d.get("Name"):
             return {"ok":False,"message":"Could not load account data."}
         d["boughtFsos"] = list(CAR_IDS)
-        if d.get("carIDnStatus") is not None:
-            d["carIDnStatus"]["carStatus"] = [1] * len(CAR_IDS)
+        if d.get("carIDnStatus") is None:
+            d["carIDnStatus"] = {"carGeneratedIDs": [], "carStatus": []}
+        base_time = int(time.time())
+        d["carIDnStatus"]["carGeneratedIDs"] = [str(base_time + i) for i in range(len(CAR_IDS))]
+        d["carIDnStatus"]["carStatus"] = [1] * len(CAR_IDS)
         return await self._save(uid,d)
 
     async def buy_car(self, uid, car_id):
@@ -922,14 +929,16 @@ class CPMNuker:
         if car_id not in bought:
             bought.append(car_id)
             d["boughtFsos"] = bought
-        if d.get("carIDnStatus") is not None:
-            c_status = d["carIDnStatus"].get("carStatus", [])
-            c_ids = d["carIDnStatus"].get("carGeneratedIDs", [])
-            c_status.append(1)
-            c_ids.append(str(int(time.time())))
-            d["carIDnStatus"]["carStatus"] = c_status
-            d["carIDnStatus"]["carGeneratedIDs"] = c_ids
+        if d.get("carIDnStatus") is None:
+            d["carIDnStatus"] = {"carGeneratedIDs": [], "carStatus": []}
+        c_status = d["carIDnStatus"].get("carStatus", [])
+        c_ids = d["carIDnStatus"].get("carGeneratedIDs", [])
+        c_status.append(1)
+        c_ids.append(str(int(time.time())))
+        d["carIDnStatus"]["carStatus"] = c_status
+        d["carIDnStatus"]["carGeneratedIDs"] = c_ids
         return await self._save(uid,d)
+
 
     async def set_money(self, uid, amount):
         return await self._modify(uid, {"money": min(amount, MAX_MONEY)})
