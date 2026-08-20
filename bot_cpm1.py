@@ -2576,17 +2576,29 @@ async def cmd_ping(msg):
     await m.edit_text(f"  🏓 Pong! {(time.time()-t)*1000:.0f}ms")
 
 
+async def run_webserver():
+    from aiohttp import web
+    app = web.Application()
+    app.router.add_get("/", lambda r: web.Response(text="Bot is running"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    log.info(f"Web server listening on port {port}")
+
+
 async def main():
     global START_TIME
     START_TIME = time.time()
 
-    log.info("━"*40)
-    log.info("  🔥 ILIJASELLTOOL 🔥")
+    log.info("━" * 40)
+    log.info("  🔥 𝗣𝗥𝗜𝗠𝗢𝗖𝗣𝗠𝗧𝗢𝗢𝗟 🔥")
     log.info(f"  Owner:  {OWNER_ID}")
     log.info(f"  Users:  {len(ALLOWED_USERS)}")
     log.info(f"  Brotli: {'✔' if HAS_BROTLI else '✗ pip install brotli'}")
     log.info(f"  Crypto: {'✔' if HAS_CRYPTO else '✗ pip install pycryptodome'}")
-    log.info("━"*40)
+    log.info("━" * 40)
 
     await bot.set_my_commands([
         BotCommand(command="start",  description="🎮 Start"),
@@ -2597,7 +2609,10 @@ async def main():
         BotCommand(command="ping",   description="🏓 Ping"),
     ])
 
-    await dp.start_polling(bot, skip_updates=True)
+    await asyncio.gather(
+        run_webserver(),
+        dp.start_polling(bot, skip_updates=True)
+    )
 
 
 if __name__ == "__main__":
