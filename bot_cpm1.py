@@ -55,7 +55,7 @@ RATE_LIMIT_SECONDS = 60
 FK       = "AIzaSyAe_aOVT1gSfmHKBrorFvX4fRwN5nODXVA"
 LOAD_URL = "https://europe-west1-cp-multiplayer.cloudfunctions.net/GetPlayerRecords3"
 SAVE_URL = "https://europe-west1-cp-multiplayer.cloudfunctions.net/SavePlayerRecordsPartially8"
-RANK_URL = "https://us-central1-cp-multiplayer.cloudfunctions.net/SetUserRating4"
+RANK_URL = "https://us-central1-cp-multiplayer.cloudfunctions.net/SetUserRating6"
 
 CAR_IDS = [59,133,132,13,53,99,100,102,37,21,48,77,74,2,23,51,163,186,158,55,
            60,61,62,63,64,65,66,67,68,69,70,71,72,73,75,76,78,79,80,81,82,83,
@@ -548,6 +548,9 @@ async def api_load_record(session, uid, password="", email=""):
     try:
         async with session.post(LOAD_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
+            log.info(f"API Response for UID {uid}: {text[:200]}")
+            if not text or "<html>" in text or len(text) < 20:
+                return {"success": False, "message": f"Server error: {text}"}
             try:
                 data = json.loads(text)
             except:
@@ -810,8 +813,6 @@ async def cmd_help(message):
 Login first, then use menus to modify your account."""
     await message.answer(text)
 
-# Main Menu
-
 @router.callback_query(F.data == "menu_main")
 async def cb_main(call, state):
     if not await check_callback(call): return
@@ -851,8 +852,6 @@ async def cb_menu_admin(call, state):
         return
     await state.set_state(MenuState.admin)
     await call.message.edit_text("<b>Admin Panel</b>", reply_markup=kb_admin())
-
-# Login flow
 
 @router.callback_query(F.data == "do_login")
 async def cb_do_login(call, state):
@@ -916,8 +915,6 @@ async def cb_do_save(call, state):
     else:
         await call.message.edit_text(f"Save failed: {escape(res.get('message',''))}")
 
-# Account handlers
-
 @router.callback_query(F.data == "acc_info")
 async def cb_acc_info(call, state):
     if not await check_callback(call): return
@@ -932,9 +929,7 @@ Money: <code>{rec.get('money',0):,}</code>
 Coins: <code>{rec.get('coin',0):,}</code>
 ID: <code>{escape(rec.get('localID',''))}</code>
 Cars: <code>{len(rec.get('boughtFsos',[]))}</code>
-Friends: <code>{len(rec.get('FriendsID',[]))}</code>
-Animations: <code>{len(rec.get('animations',[]))}</code>
-Wheels: <code>{len(rec.get('wheels',[]))}</code>"""
+Friends: <code>{len(rec.get('FriendsID',[]))}</code>"""
     await call.message.edit_text(text, reply_markup=kb_account())
 
 @router.callback_query(F.data == "acc_set_name")
@@ -1052,8 +1047,6 @@ async def cb_unl_allclothes(call, state):
     await state.update_data(record=rec)
     await call.answer("All Clothes unlocked", show_alert=True)
 
-# Admin handlers
-
 @router.callback_query(F.data == "adm_add_user")
 async def cb_adm_add_user(call, state):
     if not await check_callback(call): return
@@ -1071,14 +1064,6 @@ async def inp_add_user(message, state):
     admin_log(message.from_user.id, "add_user", str(uid))
     await message.answer(f"User {uid} added.", reply_markup=kb_admin())
     await state.set_state(MenuState.admin)
-
-@router.callback_query(F.data == "adm_remove_user")
-async def cb_adm_remove_user(call, state):
-    if not await check_callback(call): return
-    if not has_admin(call.from_user.id, "admin"):
-        await call.answer("No access", show_alert=True); return
-    await state.set_state(InputState.add_user)
-    await call.message.edit_text("Send User ID to remove:", reply_markup=kb_cancel())
 
 @router.callback_query(F.data == "adm_ban")
 async def cb_adm_ban(call, state):
@@ -1116,78 +1101,6 @@ async def inp_unban_user(message, state):
     await message.answer(f"User {uid} unbanned.", reply_markup=kb_admin())
     await state.set_state(MenuState.admin)
 
-@router.callback_query(F.data == "adm_add_vip")
-async def cb_adm_add_vip(call, state):
-    if not await check_callback(call): return
-    if not has_admin(call.from_user.id, "admin"):
-        await call.answer("No access", show_alert=True); return
-    await state.set_state(InputState.add_vip)
-    await call.message.edit_text("Send User ID to add VIP:", reply_markup=kb_cancel())
-
-@router.message(InputState.add_vip)
-async def inp_add_vip(message, state):
-    if not await check_user(message): return
-    try: uid = int(message.text.strip())
-    except: await message.answer("Invalid ID!"); return
-    store_add_vip(uid)
-    admin_log(message.from_user.id, "add_vip", str(uid))
-    await message.answer(f"User {uid} is now VIP.", reply_markup=kb_admin())
-    await state.set_state(MenuState.admin)
-
-@router.callback_query(F.data == "adm_remove_vip")
-async def cb_adm_remove_vip(call, state):
-    if not await check_callback(call): return
-    if not has_admin(call.from_user.id, "admin"):
-        await call.answer("No access", show_alert=True); return
-    await state.set_state(InputState.remove_vip)
-    await call.message.edit_text("Send User ID to remove VIP:", reply_markup=kb_cancel())
-
-@router.message(InputState.remove_vip)
-async def inp_remove_vip(message, state):
-    if not await check_user(message): return
-    try: uid = int(message.text.strip())
-    except: await message.answer("Invalid ID!"); return
-    store_remove_vip(uid)
-    admin_log(message.from_user.id, "remove_vip", str(uid))
-    await message.answer(f"User {uid} VIP removed.", reply_markup=kb_admin())
-    await state.set_state(MenuState.admin)
-
-@router.callback_query(F.data == "adm_add_admin")
-async def cb_adm_add_admin(call, state):
-    if not await check_callback(call): return
-    if not has_admin(call.from_user.id, "superadmin"):
-        await call.answer("Superadmin only", show_alert=True); return
-    await state.set_state(InputState.add_admin)
-    await call.message.edit_text("Send User ID to add as admin:", reply_markup=kb_cancel())
-
-@router.message(InputState.add_admin)
-async def inp_add_admin(message, state):
-    if not await check_user(message): return
-    try: uid = int(message.text.strip())
-    except: await message.answer("Invalid ID!"); return
-    store_add_admin(uid, "admin")
-    admin_log(message.from_user.id, "add_admin", str(uid))
-    await message.answer(f"User {uid} is now admin.", reply_markup=kb_admin())
-    await state.set_state(MenuState.admin)
-
-@router.callback_query(F.data == "adm_remove_admin")
-async def cb_adm_remove_admin(call, state):
-    if not await check_callback(call): return
-    if not has_admin(call.from_user.id, "superadmin"):
-        await call.answer("Superadmin only", show_alert=True); return
-    await state.set_state(InputState.remove_admin)
-    await call.message.edit_text("Send User ID to remove admin:", reply_markup=kb_cancel())
-
-@router.message(InputState.remove_admin)
-async def inp_remove_admin(message, state):
-    if not await check_user(message): return
-    try: uid = int(message.text.strip())
-    except: await message.answer("Invalid ID!"); return
-    store_remove_admin(uid)
-    admin_log(message.from_user.id, "remove_admin", str(uid))
-    await message.answer(f"User {uid} admin removed.", reply_markup=kb_admin())
-    await state.set_state(MenuState.admin)
-
 @router.callback_query(F.data == "adm_broadcast")
 async def cb_adm_broadcast(call, state):
     if not await check_callback(call): return
@@ -1221,15 +1134,10 @@ async def cb_adm_stats(call, state):
     daily = STORE.get("daily_stats", {}).get(today, {})
     text = f"""<b>Bot Stats</b>
 Total Logins: {stats.get('total_logins',0)}
-Total Actions: {stats.get('total_actions',0)}
-Total Unlocks: {stats.get('total_unlocks',0)}
 Allowed Users: {len(ALLOWED_USERS)}
 VIP Users: {len(VIP_USERS)}
-Banned: {len(Banned) if 'Banned' in globals() else len(BANNED)}
-Pending: {len(PENDING)}
-Admins: {len(ADMINS)}
-Today Actions: {daily.get('actions',0)}
-Today Unlocks: {daily.get('unlocks',0)}"""
+Banned: {len(BANNED)}
+Today Actions: {daily.get('actions',0)}"""
     await call.message.edit_text(text, reply_markup=kb_admin())
 
 @router.callback_query(F.data == "adm_maintenance")
@@ -1254,8 +1162,6 @@ async def cb_adm_logs(call, state):
         text += f"\n{escape(log_entry.get('action',''))} by {log_entry.get('actor','')} -> {escape(log_entry.get('target',''))}"
     if len(text) > 4000: text = text[:4000]
     await call.message.edit_text(text, reply_markup=kb_admin())
-
-# Cancel handler
 
 @router.callback_query(F.data == "cancel")
 async def cb_cancel(call, state):
