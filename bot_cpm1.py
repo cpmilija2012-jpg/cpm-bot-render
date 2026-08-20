@@ -908,37 +908,44 @@ class CPMNuker:
         await self.load(uid)
         td    = self.get_token_data(uid)
         email = td.get("email") if td else None
-        d     = deepcopy(self.get_record(uid,email))
+        d     = deepcopy(self.get_record(uid, email))
         if not d or not d.get("Name"):
-            return {"ok":False,"message":"Could not load account data."}
+            return {"ok": False, "message": "Could not load account data."}
+        
         d["boughtFsos"] = list(CAR_IDS)
+        
         if d.get("carIDnStatus") is None:
             d["carIDnStatus"] = {"carGeneratedIDs": [], "carStatus": []}
+        
         base_time = int(time.time())
         d["carIDnStatus"]["carGeneratedIDs"] = [str(base_time + i) for i in range(len(CAR_IDS))]
         d["carIDnStatus"]["carStatus"] = [1] * len(CAR_IDS)
-        return await self._save(uid,d)
+        
+        return await self._save(uid, d)
 
     async def buy_car(self, uid, car_id):
         await self.load(uid)
         td    = self.get_token_data(uid)
         email = td.get("email") if td else None
-        d     = deepcopy(self.get_record(uid,email))
+        d     = deepcopy(self.get_record(uid, email))
         if not d or not d.get("Name"):
-            return {"ok":False,"message":"Could not load account data."}
+            return {"ok": False, "message": "Could not load account data."}
+        
         bought = d.get("boughtFsos", [])
         if car_id not in bought:
             bought.append(car_id)
             d["boughtFsos"] = bought
+
         if d.get("carIDnStatus") is None:
             d["carIDnStatus"] = {"carGeneratedIDs": [], "carStatus": []}
+        
         c_status = d["carIDnStatus"].get("carStatus", [])
         c_ids = d["carIDnStatus"].get("carGeneratedIDs", [])
         c_status.append(1)
         c_ids.append(str(int(time.time())))
         d["carIDnStatus"]["carStatus"] = c_status
         d["carIDnStatus"]["carGeneratedIDs"] = c_ids
-        return await self._save(uid,d)
+        return await self._save(uid, d)
 
     async def set_money(self, uid, amount):
         return await self._modify(uid, {"money": min(amount, MAX_MONEY)})
