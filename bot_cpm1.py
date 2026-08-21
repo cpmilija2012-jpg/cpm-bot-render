@@ -1,8 +1,3 @@
-Toggle navigation
-
-Shared file: akimiki357's cpm1bot.py
-The code below has been shared by akimiki357. Want to see it run? Or fix some of akimiki357's bugs? Or introduce some of your own? Use the button above to copy it to your own account.
-
 import asyncio
 import aiohttp
 import json
@@ -78,6 +73,13 @@ OWNER_ID  = 8884756222
 
 RATE_LIMIT_ACTIONS = 10
 RATE_LIMIT_SECONDS = 60
+
+DEFAULT_HEADERS = {
+    "Content-Type": "application/json",
+    "Accept": "application/json, text/plain, */*",
+    "User-Agent": "UnityPlayer/2021.3.15f1 (UnityWebRequest/1.0, libcurl/7.84.0-DEV)",
+    "X-Unity-Version": "2021.3.15f1",
+}
 
 CAR_IDS = [59,133,132,13,53,99,100,102,37,21,48,77,74,2,23,51,163,186,158,55,
            60,61,62,63,64,65,66,67,68,69,70,71,72,73,75,76,78,79,80,81,82,83,
@@ -521,8 +523,7 @@ def decrypt_player_record(base64_text, uid, password=None, email=None):
     buf = _try_b64_decode(base64_text)
     if not buf:
         # Show first 300 chars of what we got for debugging
-        preview = base64_text[:300].replace("
-", " ")
+        preview = base64_text[:300].replace("\n", " ")
         return {"success": False, "message": f"Could not decode response. Preview: {preview}"}
 
     if len(buf) < 10:
@@ -644,15 +645,41 @@ async def api_load_record(session, uid, password="", email=""):
         "fk": FK,
     }
     try:
-        async with session.post(LOAD_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(
+            LOAD_URL,
+            json=payload,
+            headers=DEFAULT_HEADERS,
+            timeout=aiohttp.ClientTimeout(total=30)
+        ) as resp:
             text = await resp.text()
-            log.info(f"Load status={resp.status} uid={uid} preview={text[:200].replace(chr(10), ' ')}")
+            log.info(f"=== LOAD RESPONSE ===")
+            log.info(f"Status: {resp.status}")
+            log.info(f"Headers: {dict(resp.headers)}")
+            log.info(f"Body length: {len(text)}")
+            log.info(f"Body (first 500 chars): {text[:500]}")
+            log.info(f"=====================")
 
             if resp.status != 200:
-                return {"success": False, "message": f"HTTP {resp.status}: {text[:300]}"}
+                return {
+                    "success": False,
+                    "message": f"HTTP {resp.status}",
+                    "raw_response": text,
+                    "response_preview": text[:500]
+                }
 
-            # If response is JSON, pass the whole text to decrypt_player_record
-            # which now knows how to extract base64 from JSON
+            if not text or not text.strip():
+                return {"success": False, "message": "Server returned empty body", "raw_response": ""}
+
+            # Try to detect HTML
+            stripped = text.strip()
+            if stripped.startswith("<") and ">" in stripped:
+                preview = text[:300].replace("\n", " ")
+                return {
+                    "success": False,
+                    "message": f"Server returned HTML (not JSON/base64): {preview}",
+                    "raw_response": text
+                }
+
             return decrypt_player_record(text, uid, password, email)
 
     except Exception as e:
@@ -673,7 +700,7 @@ async def api_save_record(session, uid, record, password="", email=""):
         "base64": b64,
     }
     try:
-        async with session.post(SAVE_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(SAVE_URL, json=payload, headers=DEFAULT_HEADERS, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
             log.debug(f"Save response status={resp.status}, body={text[:200]}")
             if resp.status != 200:
@@ -692,7 +719,7 @@ async def api_save_record(session, uid, record, password="", email=""):
 async def api_set_rank(session, uid, rank):
     payload = {"uid": uid, "rank": rank, "fk": FK}
     try:
-        async with session.post(RANK_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(RANK_URL, json=payload, headers=DEFAULT_HEADERS, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
             log.debug(f"Rank response status={resp.status}, body={text[:200]}")
             if resp.status != 200:
@@ -1004,12 +1031,28 @@ async def inp_login_email(message, state):
     async with aiohttp.ClientSession() as session:
         res = await api_load_record(session, uid, pw, em)
     if not res.get("success"):
-        await message.answer(f"Login failed: {escape(res.get('message',''))}")
+        msg = res.get("message", "Unknown error")
+        raw = res.get("raw_response", "")
+        # Show raw response to user for debugging
+        if raw:
+            preview = raw[:800].replace("<", "&lt;").replace(">", "&gt;")
+            await message.answer(
+                f"❌ Login failed: <code>{escape(msg)}</code>\n\n"
+                f"<b>Raw server response:</b>\n<pre>{preview}</pre>\n\n"
+                f"Pošalji ovu poruku adminu da vidi šta server vraća."
+            )
+        else:
+            await message.answer(f"❌ Login failed: {escape(msg)}")
         await state.set_state(MenuState.main)
         return
     rec = res["record"]
     await state.update_data(record=rec, uid=uid, password=pw, email=em)
-    await message.answer(f"Logged in as <b>{escape(rec.get('Name',''))}</b>\nMoney: {rec.get('money',0):,}\nCoins: {rec.get('coin',0):,}", reply_markup=kb_main(is_admin=has_admin(message.from_user.id)))
+    await message.answer(
+        f"✅ Logged in as <b>{escape(rec.get('Name',''))}</b>\n"
+        f"Money: {rec.get('money',0):,}\n"
+        f"Coins: {rec.get('coin',0):,}",
+        reply_markup=kb_main(is_admin=has_admin(message.from_user.id))
+    )
     await state.set_state(MenuState.main)
     update_daily_stats("logins")
 
