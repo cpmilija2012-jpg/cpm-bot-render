@@ -1,3 +1,8 @@
+Toggle navigation
+
+Shared file: akimiki357's cpm1bot.py
+The code below has been shared by akimiki357. Want to see it run? Or fix some of akimiki357's bugs? Or introduce some of your own? Use the button above to copy it to your own account.
+
 import asyncio
 import aiohttp
 import json
@@ -424,10 +429,104 @@ def try_parse(buf):
         except: pass
     return None
 
+def _try_b64_decode(text):
+    """Try multiple base64 decoding strategies."""
+    candidates = []
+
+    # Clean the text
+    t = text.strip()
+
+    # If it's a JSON string (quoted), unwrap it
+    if (t.startswith('"') and t.endswith('"')) or (t.startswith("'") and t.endswith("'")):
+        try:
+            t = json.loads(t)
+            if isinstance(t, str):
+                candidates.append(t.strip())
+        except:
+            pass
+
+    candidates.append(t)
+
+    # Also try extracting base64-like strings from the text
+    import re
+    b64_pattern = re.compile(r'[A-Za-z0-9+/=_-]{20,}')
+    matches = b64_pattern.findall(t)
+    for m in matches:
+        if m not in candidates:
+            candidates.append(m)
+
+    for candidate in candidates:
+        candidate = candidate.strip()
+        if len(candidate) < 10:
+            continue
+
+        # Strategy 1: Standard base64
+        try:
+            return base64.b64decode(candidate)
+        except:
+            pass
+
+        # Strategy 2: URL-safe base64
+        try:
+            return base64.urlsafe_b64decode(candidate)
+        except:
+            pass
+
+        # Strategy 3: Fix padding and retry standard
+        try:
+            padded = candidate + '=' * (4 - len(candidate) % 4)
+            return base64.b64decode(padded)
+        except:
+            pass
+
+        # Strategy 4: Fix padding and retry URL-safe
+        try:
+            padded = candidate + '=' * (4 - len(candidate) % 4)
+            return base64.urlsafe_b64decode(padded)
+        except:
+            pass
+
+    return None
+
 def decrypt_player_record(base64_text, uid, password=None, email=None):
-    try: buf = base64.b64decode(base64_text)
-    except: return {"success": False, "message": "Bad base64"}
-    if len(buf) < 10: return {"success": False, "message": "Too small"}
+    txt = base64_text.strip()
+
+    # If the server returned JSON, try to extract base64 from it
+    if txt.startswith("{") or txt.startswith("["):
+        try:
+            data = json.loads(txt)
+            if isinstance(data, dict):
+                # Check common field names
+                for key in ["base64", "record", "data", "player", "save", "response", "result", "payload"]:
+                    val = data.get(key)
+                    if isinstance(val, str) and len(val) > 20:
+                        buf = _try_b64_decode(val)
+                        if buf:
+                            parsed = try_parse(buf)
+                            if parsed:
+                                return {"success": True, "record": parsed}
+                # If no base64 found, return the error
+                msg = data.get("message") or data.get("error") or json.dumps(data)
+                return {"success": False, "message": f"Server returned JSON: {msg}"}
+            elif isinstance(data, str):
+                buf = _try_b64_decode(data)
+                if buf:
+                    parsed = try_parse(buf)
+                    if parsed:
+                        return {"success": True, "record": parsed}
+        except Exception as e:
+            log.debug(f"JSON parse failed: {e}")
+
+    # Direct base64 decode
+    buf = _try_b64_decode(base64_text)
+    if not buf:
+        # Show first 300 chars of what we got for debugging
+        preview = base64_text[:300].replace("
+", " ")
+        return {"success": False, "message": f"Could not decode response. Preview: {preview}"}
+
+    if len(buf) < 10:
+        return {"success": False, "message": f"Decoded record too small ({len(buf)} bytes)"}
 
     for key in build_aes_keys(uid, password, email):
         dec = decrypt_aes(buf, key)
@@ -547,15 +646,17 @@ async def api_load_record(session, uid, password="", email=""):
     try:
         async with session.post(LOAD_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
-            try:
-                data = json.loads(text)
-            except:
-                data = {"base64": text}
-            b64 = data.get("base64") or data.get("record") or text
-            if not b64 or not isinstance(b64, str):
-                return {"success": False, "message": "Empty response"}
-            return decrypt_player_record(b64, uid, password, email)
+            log.info(f"Load status={resp.status} uid={uid} preview={text[:200].replace(chr(10), ' ')}")
+
+            if resp.status != 200:
+                return {"success": False, "message": f"HTTP {resp.status}: {text[:300]}"}
+
+            # If response is JSON, pass the whole text to decrypt_player_record
+            # which now knows how to extract base64 from JSON
+            return decrypt_player_record(text, uid, password, email)
+
     except Exception as e:
+        log.error(f"api_load_record exception: {e}")
         return {"success": False, "message": str(e)}
 
 async def api_save_record(session, uid, record, password="", email=""):
@@ -574,16 +675,31 @@ async def api_save_record(session, uid, record, password="", email=""):
     try:
         async with session.post(SAVE_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             text = await resp.text()
+            log.debug(f"Save response status={resp.status}, body={text[:200]}")
+            if resp.status != 200:
+                return {"success": False, "message": f"HTTP {resp.status}: {text[:200]}"}
+            try:
+                data = json.loads(text)
+                if data.get("error") or data.get("success") is False:
+                    return {"success": False, "message": data.get("message") or data.get("error") or text}
+            except:
+                pass
             return {"success": True, "response": text}
     except Exception as e:
+        log.error(f"api_save_record exception: {e}")
         return {"success": False, "message": str(e)}
 
 async def api_set_rank(session, uid, rank):
     payload = {"uid": uid, "rank": rank, "fk": FK}
     try:
         async with session.post(RANK_URL, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            return {"success": resp.status == 200, "response": await resp.text()}
+            text = await resp.text()
+            log.debug(f"Rank response status={resp.status}, body={text[:200]}")
+            if resp.status != 200:
+                return {"success": False, "message": f"HTTP {resp.status}: {text[:200]}"}
+            return {"success": True, "response": text}
     except Exception as e:
+        log.error(f"api_set_rank exception: {e}")
         return {"success": False, "message": str(e)}
 
 # ============================================================
