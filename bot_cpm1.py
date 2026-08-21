@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+from aiohttp import web
 import json
 import re
 import sqlite3
@@ -46,8 +47,8 @@ from aiogram.types import (
 #  ⚙️  CONFIG
 # ═══════════════════════════════════════════
 
-BOT_TOKEN = "8800278295:AAHBVnu5VWXFiJXKAeiLTrTwel0RbySFVV4" 
-OWNER_ID  = 8884756222 
+BOT_TOKEN = "8800278295:AAHBVnu5VWXFiJXKAeiLTrTwel0RbySFVV4"
+OWNER_ID  = 8884756222
 
 RATE_LIMIT_ACTIONS = 10
 RATE_LIMIT_SECONDS = 60
@@ -2981,6 +2982,21 @@ async def cmd_ping(msg: Message):
 #  🚀 MAIN
 # ═══════════════════════════════════════════
 
+async def health_check(request):
+    return web.Response(text="CPM Bot is running!", status=200)
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    app.router.add_get("/health", health_check)
+    port = int(os.environ.get("PORT", 10000))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    log.info(f"Web server started on port {port}")
+    return runner
+
 async def main():
     global START_TIME
     START_TIME = time.time()
@@ -3002,8 +3018,11 @@ async def main():
         BotCommand(command="ping",   description="🏓 Ping"),
     ])
 
-    await dp.start_polling(bot, skip_updates=True)
-
+    runner = await start_web_server()
+    try:
+        await dp.start_polling(bot, skip_updates=True)
+    finally:
+        await runner.cleanup()
 
 if __name__ == "__main__":
     try:
