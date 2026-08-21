@@ -48,8 +48,8 @@ from aiogram.types import (
 #  ⚙️  CONFIG
 # ═══════════════════════════════════════════
 
-BOT_TOKEN = "8800278295:AAHBVnu5VWXFiJXKAeiLTrTwel0RbySFVV4"
-OWNER_ID  = 8884756222 
+BOT_TOKEN = "8800278295:AAHBVnu5VWXFiJXKAeiLTrTwel0RbySFVV4" 
+OWNER_ID  = 8884756222  
 
 RATE_LIMIT_ACTIONS = 10
 RATE_LIMIT_SECONDS = 60
@@ -2205,10 +2205,11 @@ async def cb_feat_all(cb: CallbackQuery):
 
 @rt.callback_query(F.data == "menu_cars")
 async def cb_cars_menu(cb: CallbackQuery):
-    if not nuker.get_token(cb.from_user.id): await cb.answer("✗ Sign in first!", show_alert=True); return
-    txt = f"{B}" + chr(10) + "  🚗  𝗖𝗔𝗥𝗦 & 𝗚𝗔𝗥𝗔𝗚𝗘" + chr(10) + f"{B}" + chr(10) + chr(10) + "  Select an option:"
+    log.info(f"Cars menu clicked by {cb.from_user.id}")
+    nl = chr(10)
+    txt = f"{B}" + nl + "  🚗  CARS & GARAGE" + nl + f"{B}" + nl + nl + "  Select an option:"
     await cb.message.edit_text(txt, reply_markup=K.cars())
-    await cb.answer()
+    await cb.answer("🚗 Cars menu")
 
 
 @rt.callback_query(F.data == "car_unlock_all")
@@ -2983,6 +2984,11 @@ async def cmd_ping(msg: Message):
 # ═══════════════════════════════════════════
 #  🚀 MAIN
 # ═══════════════════════════════════════════
+
+@rt.callback_query()
+async def cb_fallback(cb: CallbackQuery):
+    log.info(f"Unhandled callback: {cb.data} from {cb.from_user.id}")
+    await cb.answer("Processing...", show_alert=False)
 
 async def health_check(request):
     return web.Response(text="CPM Bot is running!", status=200)
