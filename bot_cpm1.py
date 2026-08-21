@@ -1,5 +1,6 @@
 import asyncio
 import aiohttp
+from aiohttp import web
 import json
 import re
 import time
@@ -1444,11 +1445,35 @@ async def cb_cancel(call, state):
     await call.message.edit_text("<b>Main Menu</b>", reply_markup=kb_main(is_admin=has_admin(uid)))
 
 # ============================================================
+#  WEB SERVER (for Render Web Service free tier)
+# ============================================================
+
+async def health_check(request):
+    return web.Response(text="CPM1 Bot is running!", status=200)
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", health_check)
+    app.router.add_get("/health", health_check)
+
+    port = int(os.environ.get("PORT", 10000))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    log.info(f"Web server started on port {port}")
+    return runner
+
+# ============================================================
 #  MAIN
 # ============================================================
 
 async def main():
-    await dp.start_polling(bot)
+    runner = await start_web_server()
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await runner.cleanup()
 
 if __name__ == "__main__":
     asyncio.run(main())
