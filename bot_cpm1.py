@@ -1423,6 +1423,15 @@ class K:
         ])
 
     @staticmethod
+    def cars():
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔓 Unlock All Cars", callback_data="car_unlock_all"),
+             InlineKeyboardButton(text="🚓 Police", callback_data="car_police")],
+            [InlineKeyboardButton(text="🛒 Buy Car (ID)", callback_data="car_buy")],
+            [InlineKeyboardButton(text="◂ Back", callback_data="back_home")],
+        ])
+
+    @staticmethod
     def admin(uid):
         lvl = admin_level(uid)
         b   = []
@@ -1543,167 +1552,6 @@ class SLoses(StatesGroup):
 
 class SCar(StatesGroup):
     car_id = State()
-
-    @staticmethod
-    def cars():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔓 Unlock All Cars", callback_data="car_unlock_all"),
-             InlineKeyboardButton(text="🚓 Police", callback_data="car_police")],
-            [InlineKeyboardButton(text="🛒 Buy Car (ID)", callback_data="car_buy")],
-            [InlineKeyboardButton(text="◂ Back", callback_data="back_home")],
-        ])
-
-        rows = [
-            [InlineKeyboardButton(text="💰 Money",   callback_data="menu_money"),
-             InlineKeyboardButton(text="🪙 Coins",   callback_data="menu_coins")],
-            [InlineKeyboardButton(text="⚡ Features",callback_data="menu_feat"),
-             InlineKeyboardButton(text="🔧 Settings",callback_data="menu_set")],
-            [InlineKeyboardButton(text="🚗 Cars",    callback_data="menu_cars"),
-             InlineKeyboardButton(text="🔄 Refresh", callback_data="refresh")],
-        ]
-
-
-    @staticmethod
-    def money():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="$1M",   callback_data="m_1000000"),
-             InlineKeyboardButton(text="$5M",   callback_data="m_5000000"),
-             InlineKeyboardButton(text="$10M",  callback_data="m_10000000")],
-            [InlineKeyboardButton(text="$25M",  callback_data="m_25000000"),
-             InlineKeyboardButton(text="$50M ★",callback_data="m_50000000")],
-            [InlineKeyboardButton(text="✏ Custom Amount", callback_data="m_custom")],
-            [InlineKeyboardButton(text="◂ Back", callback_data="back_home")],
-        ])
-
-    @staticmethod
-    def coins():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="100K",   callback_data="c_100000"),
-             InlineKeyboardButton(text="250K",   callback_data="c_250000"),
-             InlineKeyboardButton(text="500K ★", callback_data="c_500000")],
-            [InlineKeyboardButton(text="✏ Custom Amount", callback_data="c_custom")],
-            [InlineKeyboardButton(text="◂ Back", callback_data="back_home")],
-        ])
-
-    @staticmethod
-    def feat():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚗 W16",     callback_data="f_w16"),
-             InlineKeyboardButton(text="🔊 Horns",   callback_data="f_horns")],
-            [InlineKeyboardButton(text="🛡 No Dmg",  callback_data="f_damage"),
-             InlineKeyboardButton(text="⛽ Fuel",    callback_data="f_fuel")],
-            [InlineKeyboardButton(text="💨 Smoke",   callback_data="f_smoke"),
-             InlineKeyboardButton(text="🎭 Anims",   callback_data="f_anims")],
-            [InlineKeyboardButton(text="🛞 Wheels",  callback_data="f_wheels"),
-             InlineKeyboardButton(text="🏠 Houses",  callback_data="f_houses")],
-            [InlineKeyboardButton(text="🎮 Levels",  callback_data="f_levels"),
-             InlineKeyboardButton(text="🏅 Rank",    callback_data="f_rank")],
-            [InlineKeyboardButton(text="🚀 ★ UNLOCK ALL ★", callback_data="f_all")],
-            [InlineKeyboardButton(text="◂ Back", callback_data="back_home")],
-        ])
-
-    @staticmethod
-    def sett():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✏ Name",     callback_data="s_name"),
-             InlineKeyboardButton(text="🆔 Player ID",callback_data="s_pid")],
-            [InlineKeyboardButton(text="🏆 Wins",    callback_data="s_wins"),
-             InlineKeyboardButton(text="😞 Loses",   callback_data="s_loses")],
-            [InlineKeyboardButton(text="🔧 Fix Account Bugs", callback_data="s_fix")],
-            [InlineKeyboardButton(text="◂ Back", callback_data="back_home")],
-        ])
-
-    @staticmethod
-    def admin(uid):
-        lvl = admin_level(uid)
-        b   = []
-        if lvl >= 5:
-            b.append([
-                InlineKeyboardButton(text="📊 Stats", callback_data="a_stats"),
-                InlineKeyboardButton(text="👥 Users", callback_data="a_users"),
-            ])
-            b.append([InlineKeyboardButton(text="📋 Activity Log", callback_data="a_log")])
-        if lvl >= 10:
-            b.append([InlineKeyboardButton(text="⏳ Pending Requests", callback_data="a_pend")])
-            b.append([
-                InlineKeyboardButton(text="➕ Add",   callback_data="a_adduser"),
-                InlineKeyboardButton(text="📥 Bulk Add", callback_data="a_bulkadd"),
-                InlineKeyboardButton(text="🚫 Ban",   callback_data="a_ban"),
-                InlineKeyboardButton(text="🔓 Unban", callback_data="a_unban"),
-            ])
-            b.append([
-                InlineKeyboardButton(text="👢 Kick",    callback_data="a_kick"),
-                InlineKeyboardButton(text="⏰ Expiry",  callback_data="a_expiry"),
-                InlineKeyboardButton(text="ℹ Profile", callback_data="a_profile"),
-            ])
-        if lvl >= 50:
-            b.append([
-                InlineKeyboardButton(text="💎 +VIP", callback_data="a_addvip"),
-                InlineKeyboardButton(text="💎 -VIP", callback_data="a_rmvip"),
-            ])
-            b.append([InlineKeyboardButton(text="📢 Broadcast", callback_data="a_bcast_menu")])
-        if lvl >= 100:
-            b.append([
-                InlineKeyboardButton(text="➕ Add Admin", callback_data="a_addadm"),
-                InlineKeyboardButton(text="➖ Rem Admin", callback_data="a_rmadm"),
-            ])
-            b.append([
-                InlineKeyboardButton(text="🖼 Update Photo",    callback_data="a_photo"),
-                InlineKeyboardButton(text="🔧 Maintenance",    callback_data="a_maint"),
-            ])
-            b.append([InlineKeyboardButton(text="🔄 Reset Stats", callback_data="a_reset")])
-        b.append([InlineKeyboardButton(text="◂ Home", callback_data="back_home")])
-        return InlineKeyboardMarkup(inline_keyboard=b)
-
-    @staticmethod
-    def request_actions(uid):
-        return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Accept", callback_data=f"rq_accept_{uid}"),
-            InlineKeyboardButton(text="❌ Reject", callback_data=f"rq_reject_{uid}"),
-            InlineKeyboardButton(text="🚫 Ban",    callback_data=f"rq_ban_{uid}"),
-        ]])
-
-    @staticmethod
-    def broadcast_menu():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📝 Text Message",    callback_data="bcast_text")],
-            [InlineKeyboardButton(text="🖼 Photo + Caption", callback_data="bcast_photo")],
-            [InlineKeyboardButton(text="💎 VIP Only",        callback_data="bcast_vip")],
-            [InlineKeyboardButton(text="◂ Back",             callback_data="admin_menu")],
-        ])
-
-    @staticmethod
-    def back_admin():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◂ Admin Panel", callback_data="admin_menu")],
-        ])
-
-    @staticmethod
-    def back_home():
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◂ Home", callback_data="back_home")],
-        ])
-
-    @staticmethod
-    def confirm_logout():
-        return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✔ Yes", callback_data="do_logout"),
-            InlineKeyboardButton(text="✗ No",  callback_data="back_home"),
-        ]])
-
-    @staticmethod
-    def pending_list():
-        b = []
-        for uid_str, info in list(PENDING.items())[:15]:
-            uid_int = int(uid_str)
-            name    = info.get("name",f"User {uid_int}")[:16]
-            b.append([
-                InlineKeyboardButton(text=f"✅ {name}", callback_data=f"rq_accept_{uid_int}"),
-                InlineKeyboardButton(text="❌",          callback_data=f"rq_reject_{uid_int}"),
-                InlineKeyboardButton(text="🚫",          callback_data=f"rq_ban_{uid_int}"),
-            ])
-        b.append([InlineKeyboardButton(text="◂ Back", callback_data="admin_menu")])
-        return InlineKeyboardMarkup(inline_keyboard=b)
 
 
 # ═══════════════════════════════════════════
