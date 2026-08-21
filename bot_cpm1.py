@@ -639,53 +639,75 @@ def serialize_player(p):
 # ============================================================
 
 async def api_load_record(session, uid, password="", email=""):
-    payload = {
-        "uid": uid,
-        "password": password,
-        "email": email,
-        "fk": FK,
-    }
-    try:
-        async with session.post(
-            LOAD_URL,
-            json=payload,
-            headers=DEFAULT_HEADERS,
-            timeout=aiohttp.ClientTimeout(total=30)
-        ) as resp:
-            text = await resp.text()
-            log.info(f"=== LOAD RESPONSE ===")
-            log.info(f"Status: {resp.status}")
-            log.info(f"Headers: {dict(resp.headers)}")
-            log.info(f"Body length: {len(text)}")
-            log.info(f"Body (first 500 chars): {text[:500]}")
-            log.info(f"=====================")
+    # Try multiple request formats to find what the server accepts.
+
+    # Build payload - only include non-empty fields
+    payload = {"uid": uid, "fk": FK}
+    if password:
+        payload["password"] = password
+    if email:
+        payload["email"] = email
+
+    strategies = []
+
+    # Strategy 1: json=payload (aiohttp auto Content-Type)
+    strategies.append(("json-auto", {"json": payload}))
+
+    # Strategy 2: data=json.dumps with manual Content-Type (no charset)
+    strategies.append(("json-raw", {
+        "data": json.dumps(payload),
+        "headers": {**DEFAULT_HEADERS, "Content-Type": "application/json"}
+    }))
+
+    # Strategy 3: form-urlencoded
+    strategies.append(("form", {
+        "data": payload,
+        "headers": {**DEFAULT_HEADERS, "Content-Type": "application/x-www-form-urlencoded"}
+    }))
+
+    # Strategy 4: GET with query params
+    strategies.append(("get-params", {"params": payload, "method": "GET"}))
+
+    for name, kwargs in strategies:
+        try:
+            method = kwargs.pop("method", "POST")
+            log.info(f"Trying strategy: {name}")
+
+            if method == "GET":
+                async with session.get(LOAD_URL, **kwargs, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    text = await resp.text()
+            else:
+                async with session.post(LOAD_URL, **kwargs, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    text = await resp.text()
+
+            log.info(f"[{name}] Status: {resp.status}, Body: {text[:200]}")
+
+            if resp.status == 200 and text.strip():
+                # Success! Try to decrypt
+                result = decrypt_player_record(text, uid, password, email)
+                if result.get("success"):
+                    log.info(f"Strategy {name} worked!")
+                    return result
+                # If decrypt failed but we got 200, return the raw for inspection
+                if "record" not in result:
+                    return {**result, "strategy": name, "raw_response": text}
 
             if resp.status != 200:
-                return {
-                    "success": False,
-                    "message": f"HTTP {resp.status}",
-                    "raw_response": text,
-                    "response_preview": text[:500]
-                }
+                # Log failure but continue to next strategy
+                log.info(f"[{name}] Failed with HTTP {resp.status}: {text[:200]}")
+                continue
 
-            if not text or not text.strip():
-                return {"success": False, "message": "Server returned empty body", "raw_response": ""}
+        except Exception as e:
+            log.info(f"[{name}] Exception: {e}")
+            continue
 
-            # Try to detect HTML
-            stripped = text.strip()
-            if stripped.startswith("<") and ">" in stripped:
-                preview = text[:300].replace("\n", " ")
-                return {
-                    "success": False,
-                    "message": f"Server returned HTML (not JSON/base64): {preview}",
-                    "raw_response": text
-                }
-
-            return decrypt_player_record(text, uid, password, email)
-
-    except Exception as e:
-        log.error(f"api_load_record exception: {e}")
-        return {"success": False, "message": str(e)}
+    # All strategies failed - return the last response
+    return {
+        "success": False,
+        "message": "All request strategies failed. Server rejects payload.",
+        "raw_response": text if "text" in locals() else "No response",
+        "tried": [s[0] for s in strategies]
+    }
 
 async def api_save_record(session, uid, record, password="", email=""):
     raw = serialize_player(record)
@@ -695,15 +717,23 @@ async def api_save_record(session, uid, record, password="", email=""):
     b64 = base64.b64encode(comp).decode()
     payload = {
         "uid": uid,
-        "password": password,
-        "email": email,
         "fk": FK,
         "base64": b64,
     }
+    if password:
+        payload["password"] = password
+    if email:
+        payload["email"] = email
+
     try:
-        async with session.post(SAVE_URL, json=payload, headers=DEFAULT_HEADERS, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(
+            SAVE_URL,
+            data=json.dumps(payload),
+            headers={**DEFAULT_HEADERS, "Content-Type": "application/json"},
+            timeout=aiohttp.ClientTimeout(total=30)
+        ) as resp:
             text = await resp.text()
-            log.debug(f"Save response status={resp.status}, body={text[:200]}")
+            log.info(f"Save status={resp.status}, body={text[:200]}")
             if resp.status != 200:
                 return {"success": False, "message": f"HTTP {resp.status}: {text[:200]}"}
             try:
@@ -720,9 +750,14 @@ async def api_save_record(session, uid, record, password="", email=""):
 async def api_set_rank(session, uid, rank):
     payload = {"uid": uid, "rank": rank, "fk": FK}
     try:
-        async with session.post(RANK_URL, json=payload, headers=DEFAULT_HEADERS, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+        async with session.post(
+            RANK_URL,
+            data=json.dumps(payload),
+            headers={**DEFAULT_HEADERS, "Content-Type": "application/json"},
+            timeout=aiohttp.ClientTimeout(total=30)
+        ) as resp:
             text = await resp.text()
-            log.debug(f"Rank response status={resp.status}, body={text[:200]}")
+            log.info(f"Rank status={resp.status}, body={text[:200]}")
             if resp.status != 200:
                 return {"success": False, "message": f"HTTP {resp.status}: {text[:200]}"}
             return {"success": True, "response": text}
@@ -1034,16 +1069,19 @@ async def inp_login_email(message, state):
     if not res.get("success"):
         msg = res.get("message", "Unknown error")
         raw = res.get("raw_response", "")
-        # Show raw response to user for debugging
+        tried = res.get("tried", [])
+        strategy = res.get("strategy", "")
+
+        text = f"❌ Login failed: <code>{escape(msg)}</code>"
+        if tried:
+            text += f"\n\n<i>Tried strategies: {', '.join(tried)}</i>"
+        if strategy:
+            text += f"\n<i>Working strategy: {strategy}</i>"
         if raw:
-            preview = raw[:800].replace("<", "&lt;").replace(">", "&gt;")
-            await message.answer(
-                f"❌ Login failed: <code>{escape(msg)}</code>\n\n"
-                f"<b>Raw server response:</b>\n<pre>{preview}</pre>\n\n"
-                f"Pošalji ovu poruku adminu da vidi šta server vraća."
-            )
-        else:
-            await message.answer(f"❌ Login failed: {escape(msg)}")
+            preview = raw[:600].replace("<", "&lt;").replace(">", "&gt;")
+            text += f"\n\n<b>Raw response:</b>\n<pre>{preview}</pre>"
+
+        await message.answer(text)
         await state.set_state(MenuState.main)
         return
     rec = res["record"]
