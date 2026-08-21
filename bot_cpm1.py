@@ -49,7 +49,7 @@ from aiogram.types import (
 # ═══════════════════════════════════════════
 
 BOT_TOKEN = "8800278295:AAHBVnu5VWXFiJXKAeiLTrTwel0RbySFVV4"
-OWNER_ID  = 8884756222
+OWNER_ID  = 8884756222 
 
 RATE_LIMIT_ACTIONS = 10
 RATE_LIMIT_SECONDS = 60
@@ -1364,7 +1364,8 @@ class K:
              InlineKeyboardButton(text="🪙 Coins",   callback_data="menu_coins")],
             [InlineKeyboardButton(text="⚡ Features",callback_data="menu_feat"),
              InlineKeyboardButton(text="🔧 Settings",callback_data="menu_set")],
-            [InlineKeyboardButton(text="🔄 Refresh Account", callback_data="refresh")],
+            [InlineKeyboardButton(text="🚗 Cars",    callback_data="menu_cars"),
+             InlineKeyboardButton(text="🔄 Refresh", callback_data="refresh")],
         ]
         if has_admin(uid,"moderator"):
             rows.append([InlineKeyboardButton(text="👑 Admin Panel", callback_data="admin_menu")])
