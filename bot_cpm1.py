@@ -68,7 +68,7 @@ log = logging.getLogger("CPM")
 #  BOT CONFIG
 # ═══════════════════════════════════════════
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8800278295:AAG3FNPk86pAt7wP-UOi9I9l4emUbF4Ktd4")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8800278295:AAHBVnu5VWXFiJXKAeiLTrTwel0RbySFVV4")
 OWNER_ID  = 8884756222
 
 RATE_LIMIT_ACTIONS = 10
