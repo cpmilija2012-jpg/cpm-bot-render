@@ -36,14 +36,14 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # 🌐 FLASK WEB SERVER FOR RENDER DEPLOYMENT
 # ═══════════════════════════════════════════════════════════
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, abort
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return jsonify({
         "status": "online",
-        "bot": "AXEL-CPM X FANTOM-CPM TOOL",
+        "bot": "FANTOM-CPM TOOL",
         "version": "1.0.0",
         "uptime": "running"
     })
@@ -56,19 +56,22 @@ def run_flask():
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
+# Start Flask in a separate thread
+flask_thread = threading.Thread(target=run_flask, daemon=True)
+flask_thread.start()
+
 # ═══════════════════════════════════════════════════════════
 # 🔑 TOKENS & KEYS
 # ═══════════════════════════════════════════════════════════
 
-BOT_TOKEN = '8929997917:AAGPZ8xWTf24GI8MlJ-dcPOGUQgNWQ9GIIY'
+BOT_TOKEN = '8800278295:AAHBVnu5VWXFiJXKAeiLTrTwel0RbySFVV4'
 bot = telebot.TeleBot(BOT_TOKEN)
-OWNER_ID  = 8003371335
+OWNER_ID  = 8884756222
 
-ADMIN_IDS = [8003371335, 8884756222]
+ADMIN_IDS = [8884756222, 8003371335]
 ALLOWED_KEYS = [ "FANTOM"]
 CHANNEL_ID = "-1004330181139"
 CHANNEL_LINK = "https://t.me/sallezone"
-
 # ═══════════════════════════════════════════════════════════
 # 📡 API SETTINGS
 # ═══════════════════════════════════════════════════════════
@@ -1695,9 +1698,9 @@ def format_account_info(info: Dict[str, Any]) -> str:
 def get_text(chat_id, key, **kwargs):
     # All English text only
     texts = {
-        "welcome": "☠️ **AXEL-CPMx FANTOM-CPM TOOL BOT** ☠️\n🔥 **HACKER TOOL** 🔥\n━━━━━━━━━━━━━━━━━━━━━\n🔐 Welcome!\n📌 Choose activation method:\n━━━━━━━━━━━━━━━━━━━━━\n🔑 Normal Key\n⏰ Time Key\n🎁 Free Trial (10 min)\n━━━━━━━━━━━━━━━━━━━━━\n👤 @PRIMOMODZ @cpmmafia1",
-        "cpm1_section": "☠️☠️☠️ **AXEL-CPMx FANTOM-CPM TOOL CPM1** ☠️☠️☠️\n━━━━━━━━━━━━━━━━━━━━━\n📱 **Activation Menu**",
-        "cpm2_section": "☠️☠️☠️ **AXEL-CPMx FANTOM-CPM TOOL CPM2** ☠️☠️☠️\n━━━━━━━━━━━━━━━━━━━━━\n🎮 **Activation Menu**",
+        "welcome": "☠️ **AXEL-CPMx FANTOM-CPM TOOL BOT** ☠️\n🔥 **HACKER TOOL** 🔥\n━━━━━━━━━━━━━━━━━━━━━\n🔐 Welcome!\n📌 Choose activation method:\n━━━━━━━━━━━━━━━━━━━━━\n🔑 Normal Key\n⏰ Time Key\n🎁 Free Trial (10 min)\n━━━━━━━━━━━━━━━━━━━━━\n👤 @ILIJASELL @fantomm111",
+        "cpm1_section": "Ilija&Fantom\n━━━━━━━━━━━━━━━━━━━━━\n📱 **Activation Menu**",
+        "cpm2_section": "Ilija&Fantom\n━━━━━━━━━━━━━━━━━━━━━\n🎮 **Activation Menu**",
         "back": "🔙 Back",
         "not_logged": "❌ **Not logged in!** Use /start",
         "not_logged_short": "❌ **Not logged in!**",
@@ -1818,7 +1821,7 @@ def subscription_required(message):
     btn1 = types.InlineKeyboardButton("📢 Subscribe to Channel", url=CHANNEL_LINK)
     btn2 = types.InlineKeyboardButton("🔄 Check Subscription", callback_data="check_sub")
     markup.add(btn1, btn2)
-    bot.send_message(chat_id, "❌ **You must subscribe to the channel first!**\n\n📢 **Channel:** [ILIJASALLE](https://t.me/sallezone)", reply_markup=markup, parse_mode='Markdown')
+    bot.send_message(chat_id, "❌ **You must subscribe to the channel first!**\n\n📢 **Channel:** [Ilija&Fantom](https://t.me/sallezone)", reply_markup=markup, parse_mode='Markdown')
 
 def refresh_account_data(chat_id):
     """Force refresh account data for a user"""
@@ -3402,12 +3405,12 @@ def handle_all_messages(message):
     if not is_banned(chat_id) and check_subscription(chat_id):
         bot.send_message(chat_id, "❌ **Unknown command!**", parse_mode='Markdown')
 
-# # ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════
 # 🚀 BOT START
 # ═══════════════════════════════════════════════════════════
 
 print("="*60, flush=True)
-print("☠️☠️☠️ AXEL-CPMx FANTOM-CPM TOOL BOT - CPM1 + CPM2 ULTIMATE ☠️☠️☠️", flush=True)
+print("☠️☠️☠️ FANTOM-CPM TOOL BOT - CPM1 + CPM2 ULTIMATE ☠️☠️☠️", flush=True)
 print("="*60, flush=True)
 
 # 🧹 Očisti webhook pre pokretanja
