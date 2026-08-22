@@ -67,13 +67,12 @@ OWNER_ID  = 8003371335
 
 ADMIN_IDS = [8003371335, 8003371335]
 ALLOWED_KEYS = [ "FANTOM"]
-CHANNEL_ID = "-1004328512478"
-CHANNEL_LINK = "https://t.me/ttbdevcpmchannel"
+CHANNEL_ID = "-1004330181139"
+CHANNEL_LINK = "https://t.me/sallezone"
 
 # ═══════════════════════════════════════════════════════════
 # 📡 API SETTINGS
 # ═══════════════════════════════════════════════════════════
-
 # CPM1 - from cpm_nuker.py
 FK = "AIzaSyAe_aOVT1gSfmHKBrorFvX4fRwN5nODXVA"
 LOAD_URL = "https://europe-west1-cp-multiplayer.cloudfunctions.net/GetPlayerRecords3"
