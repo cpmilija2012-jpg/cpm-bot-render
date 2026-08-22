@@ -52,14 +52,6 @@ def home():
 def health():
     return jsonify({"status": "healthy"})
 
-def run_flask():
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-# Start Flask in a separate thread
-flask_thread = threading.Thread(target=run_flask, daemon=True)
-flask_thread.start()
-
 # ═══════════════════════════════════════════════════════════
 # 🔑 TOKENS & KEYS
 # ═══════════════════════════════════════════════════════════
