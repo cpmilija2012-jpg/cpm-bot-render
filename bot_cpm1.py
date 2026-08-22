@@ -65,7 +65,7 @@ flask_thread.start()
 # 🔑 TOKENS & KEYS
 # ═══════════════════════════════════════════════════════════
 
-BOT_TOKEN = '8905746024:AAEu-MNApDTnIo1jG2Nx5Do-TBYIJbQvAcE'
+BOT_TOKEN = '8929997917:AAGPZ8xWTf24GI8MlJ-dcPOGUQgNWQ9GIIY'
 bot = telebot.TeleBot(BOT_TOKEN)
 
 ADMIN_IDS = [8003371335, 8003371335]
