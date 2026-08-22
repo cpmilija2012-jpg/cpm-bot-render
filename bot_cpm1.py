@@ -23,6 +23,7 @@ import sqlite3
 import asyncio
 import aiohttp
 import threading
+bot_status = True
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
@@ -3409,28 +3410,25 @@ def handle_all_messages(message):
 # 🚀 BOT START
 # ═══════════════════════════════════════════════════════════
 
-if __name__ == "__main__":
-    print("="*60)
-    print("☠️☠️☠️ AXEL-CPMx FANTOM-CPM TOOL BOT - CPM1 + CPM2 ULTIMATE ☠️☠️☠️")
-    print("="*60)
-    print("✅ Bot is running!")
+print("="*60, flush=True)
+print("☠️☠️☠️ AXEL-CPMx FANTOM-CPM TOOL BOT - CPM1 + CPM2 ULTIMATE ☠️☠️☠️", flush=True)
+print("="*60, flush=True)
 
-    # 🧹 Očisti webhook pre polling-a (sa retry-om)
-    for attempt in range(3):
-        try:
-            bot.delete_webhook(drop_pending_updates=True)
-            print("🧹 Webhook cleared successfully")
-            break
-        except Exception as e:
-            print(f"⚠️ Webhook clear attempt {attempt+1} failed: {e}")
-            time.sleep(2)
-    else:
-        print("❌ Could not clear webhook, continuing anyway...")
+# 🧹 Očisti webhook pre pokretanja
+for attempt in range(3):
+    try:
+        bot.delete_webhook(drop_pending_updates=True)
+        print("🧹 Webhook cleared successfully", flush=True)
+        break
+    except Exception as e:
+        print(f"⚠️ Webhook clear attempt {attempt+1} failed: {e}", flush=True)
+        time.sleep(2)
 
-    # 🚀 Pokreni polling
+# 🔄 Pokreni Telegram bota u background thread-u
+def run_bot():
     while True:
         try:
-            print("🔄 Starting polling...")
+            print("🔄 Starting polling...", flush=True)
             bot.polling(
                 none_stop=True,
                 timeout=20,
@@ -3438,5 +3436,14 @@ if __name__ == "__main__":
                 skip_pending=True
             )
         except Exception as e:
-            print(f"❌ Polling error: {e}")
+            print(f"❌ Polling error: {e}", flush=True)
             time.sleep(5)
+
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
+print("✅ Bot polling thread started", flush=True)
+
+# 🌐 Flask ostaje u GLAVNOM thread-u (Render health checks)
+port = int(os.environ.get('PORT', 5000))
+print(f"🌐 Starting Flask server on port {port}...", flush=True)
+app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
