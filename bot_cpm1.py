@@ -23,7 +23,6 @@ import sqlite3
 import asyncio
 import aiohttp
 import threading
-bot_status = True
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
@@ -73,6 +72,7 @@ CHANNEL_LINK = "https://t.me/sallezone"
 # ═══════════════════════════════════════════════════════════
 # 📡 API SETTINGS
 # ═══════════════════════════════════════════════════════════
+
 # CPM1 - from cpm_nuker.py
 FK = "AIzaSyAe_aOVT1gSfmHKBrorFvX4fRwN5nODXVA"
 LOAD_URL = "https://europe-west1-cp-multiplayer.cloudfunctions.net/GetPlayerRecords3"
@@ -3402,7 +3402,7 @@ def handle_all_messages(message):
     if not is_banned(chat_id) and check_subscription(chat_id):
         bot.send_message(chat_id, "❌ **Unknown command!**", parse_mode='Markdown')
 
-# ═══════════════════════════════════════════════════════════
+# # ═══════════════════════════════════════════════════════════
 # 🚀 BOT START
 # ═══════════════════════════════════════════════════════════
 
@@ -3443,3 +3443,4 @@ print("✅ Bot polling thread started", flush=True)
 port = int(os.environ.get('PORT', 5000))
 print(f"🌐 Starting Flask server on port {port}...", flush=True)
 app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
