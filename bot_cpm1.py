@@ -60,9 +60,9 @@ def run_flask():
 # 🔑 TOKENS & KEYS
 # ═══════════════════════════════════════════════════════════
 
-BOT_TOKEN = '8929997917:AAGPZ8xWTf24GI8MlJ-dcPOGUQgNWQ9GIIY'
+BOT_TOKEN = '8800278295:AAHBVnu5VWXFiJXKAeiLTrTwel0RbySFVV4'
 bot = telebot.TeleBot(BOT_TOKEN)
-OWNER_ID  = 8003371335
+OWNER_ID  = 8884756222
 
 ADMIN_IDS = [8003371335, 8003371335]
 ALLOWED_KEYS = [ "FANTOM"]
