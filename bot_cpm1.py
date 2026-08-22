@@ -68,7 +68,7 @@ BOT_TOKEN = '8929997917:AAGPZ8xWTf24GI8MlJ-dcPOGUQgNWQ9GIIY'
 bot = telebot.TeleBot(BOT_TOKEN)
 OWNER_ID  = 8003371335
 
-ADMIN_IDS = [8884756222, 8003371335]
+ADMIN_IDS = [8003371335, 8003371335]
 ALLOWED_KEYS = [ "FANTOM"]
 CHANNEL_ID = "-1004330181139"
 CHANNEL_LINK = "https://t.me/sallezone"
@@ -1699,8 +1699,8 @@ def get_text(chat_id, key, **kwargs):
     # All English text only
     texts = {
         "welcome": "☠️ **AXEL-CPMx FANTOM-CPM TOOL BOT** ☠️\n🔥 **HACKER TOOL** 🔥\n━━━━━━━━━━━━━━━━━━━━━\n🔐 Welcome!\n📌 Choose activation method:\n━━━━━━━━━━━━━━━━━━━━━\n🔑 Normal Key\n⏰ Time Key\n🎁 Free Trial (10 min)\n━━━━━━━━━━━━━━━━━━━━━\n👤 @ILIJASELL @fantomm111",
-        "cpm1_section": "Ilija&Fantom\n━━━━━━━━━━━━━━━━━━━━━\n📱 **Activation Menu**",
-        "cpm2_section": "Ilija&Fantom\n━━━━━━━━━━━━━━━━━━━━━\n🎮 **Activation Menu**",
+        "cpm1_section": "☠️☠️☠️ ** FANTOMxILIJA-CPM TOOL CPM1** ☠️☠️☠️\n━━━━━━━━━━━━━━━━━━━━━\n📱 **Activation Menu**",
+        "cpm2_section": "☠️☠️☠️ **FANTOMxILIJA-CPM TOOL CPM2** ☠️☠️☠️\n━━━━━━━━━━━━━━━━━━━━━\n🎮 **Activation Menu**",
         "back": "🔙 Back",
         "not_logged": "❌ **Not logged in!** Use /start",
         "not_logged_short": "❌ **Not logged in!**",
@@ -1821,7 +1821,7 @@ def subscription_required(message):
     btn1 = types.InlineKeyboardButton("📢 Subscribe to Channel", url=CHANNEL_LINK)
     btn2 = types.InlineKeyboardButton("🔄 Check Subscription", callback_data="check_sub")
     markup.add(btn1, btn2)
-    bot.send_message(chat_id, "❌ **You must subscribe to the channel first!**\n\n📢 **Channel:** [Ilija&Fantom](https://t.me/sallezone)", reply_markup=markup, parse_mode='Markdown')
+    bot.send_message(chat_id, "❌ **You must subscribe to the channel first!**\n\n📢 **Channel:** [markmwehehe](https://t.me/markmwhehe)", reply_markup=markup, parse_mode='Markdown')
 
 def refresh_account_data(chat_id):
     """Force refresh account data for a user"""
