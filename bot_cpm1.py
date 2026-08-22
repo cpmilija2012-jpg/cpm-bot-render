@@ -64,9 +64,9 @@ flask_thread.start()
 # 🔑 TOKENS & KEYS
 # ═══════════════════════════════════════════════════════════
 
-BOT_TOKEN = '8800278295:AAHBVnu5VWXFiJXKAeiLTrTwel0RbySFVV4'
+BOT_TOKEN = '8929997917:AAGPZ8xWTf24GI8MlJ-dcPOGUQgNWQ9GIIY'
 bot = telebot.TeleBot(BOT_TOKEN)
-OWNER_ID  = 8884756222
+OWNER_ID  = 8003371335
 
 ADMIN_IDS = [8884756222, 8003371335]
 ALLOWED_KEYS = [ "FANTOM"]
