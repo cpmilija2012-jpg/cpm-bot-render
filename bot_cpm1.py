@@ -3414,23 +3414,29 @@ if __name__ == "__main__":
     print("☠️☠️☠️ AXEL-CPMx FANTOM-CPM TOOL BOT - CPM1 + CPM2 ULTIMATE ☠️☠️☠️")
     print("="*60)
     print("✅ Bot is running!")
-    print("👑 Admins: 6531314640, 8650959684")
-    print("🔑 Keys: AXEL-CPM FANTOM-CPM TOOL")
-    print("⏰ Time Keys: Supported (Admin can create keys with custom hours)")
-    print("🎁 Free Trial: Supported (10 minutes)")
-    print("📱 CPM1:")
-    print("   - Old (Cloning, Car Unlock): from old code")
-    print("   - New (W16, Horns, Fuel, Damage, Smoke, etc): from CPMNuker")
-    print("🎮 CPM2: from old code (working)")
-    print("📊 Key Tracking: Active (No duplicate users per key)")
-    print("📢 Admin Notifications: Active (Email + Password on login)")
-    print("🔄 Refresh Account: Fixed (Force refresh from server)")
-    print("🌐 Language: English Only")
-    print("="*60)
 
+    # 🧹 Očisti webhook pre polling-a (sa retry-om)
+    for attempt in range(3):
+        try:
+            bot.delete_webhook(drop_pending_updates=True)
+            print("🧹 Webhook cleared successfully")
+            break
+        except Exception as e:
+            print(f"⚠️ Webhook clear attempt {attempt+1} failed: {e}")
+            time.sleep(2)
+    else:
+        print("❌ Could not clear webhook, continuing anyway...")
+
+    # 🚀 Pokreni polling
     while True:
         try:
-            bot.polling(none_stop=True, timeout=20)
+            print("🔄 Starting polling...")
+            bot.polling(
+                none_stop=True,
+                timeout=20,
+                long_polling_timeout=20,
+                skip_pending=True
+            )
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"❌ Polling error: {e}")
             time.sleep(5)
