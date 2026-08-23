@@ -1,4 +1,3 @@
-
 import asyncio
 import aiohttp
 import json
@@ -43,37 +42,12 @@ from aiogram.types import (
     Message, BotCommand,
 )
 
-
-# ═══════════════════════════════════════════
-#  🌐 RENDER KEEP-ALIVE (zasebna nit)
-# ═══════════════════════════════════════════
-import threading
-import os
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-class _Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"CPM Bot OK")
-    def log_message(self, format, *args):
-        pass  # isključi logove HTTP servera
-
-def _run_server():
-    port = int(os.environ.get("PORT", 8080))
-    srv = HTTPServer(("0.0.0.0", port), _Handler)
-    srv.serve_forever()
-
-threading.Thread(target=_run_server, daemon=True).start()
-
 # ═══════════════════════════════════════════
 #  ⚙️  CONFIG
 # ═══════════════════════════════════════════
 
-BOT_TOKEN = "8682873022:AAGY8z0akQRIH6Igv5FFkQXvm54Lgz8P2bM"
+BOT_TOKEN = __import__("os").environ.get("8800278295:AAFCYZOeJyrFzUr22eQ0KhhEX_nRfTIaA8M", "").strip() or "8800278295:AAFCYZOeJyrFzUr22eQ0KhhEX_nRfTIaA8M"
 OWNER_ID  = 8884756222
-
 RATE_LIMIT_ACTIONS = 10
 RATE_LIMIT_SECONDS = 60
 BULKADD_TIMEOUT_SECONDS = 180
@@ -81,7 +55,18 @@ BULKADD_TIMEOUT_SECONDS = 180
 FK       = "AIzaSyAe_aOVT1gSfmHKBrorFvX4fRwN5nODXVA"
 LOAD_URL = "https://europe-west1-cp-multiplayer.cloudfunctions.net/GetPlayerRecords3"
 SAVE_URL = "https://europe-west1-cp-multiplayer.cloudfunctions.net/SavePlayerRecordsPartially8"
-RANK_URL = "https://us-central1-cp-multiplayer.cloudfunctions.net/SetUserRating1"
+RANK_URL = "https://europe-west1-cp-multiplayer.cloudfunctions.net/SetUserRating7"
+# Working CPM1 car APIs (marketplace inject method)
+CPM_EU = "https://europe-west1-cp-multiplayer.cloudfunctions.net"
+CARS_GET_URL = f"{CPM_EU}/TestGetAllCars"
+CARS_MARKET_LIST_URL = f"{CPM_EU}/WSGetCarListV3"
+CARS_MARKET_FULL_URL = f"{CPM_EU}/WSGetFullCarV3"
+CARS_PURCHASE_URL = f"{CPM_EU}/WSPurchaseCarV3"
+PLAYER_JSON_SAVE_URLS = [
+    f"{CPM_EU}/SavePlayerRecordsPartially8",
+    "https://us-central1-cp-multiplayer.cloudfunctions.net/SavePlayerRecordsPartially4",
+]
+SELLING_CAR_TEMPLATE = {}
 
 MAX_MONEY = 50_000_000
 MAX_COIN  = 500_000
@@ -962,25 +947,6 @@ class CPMNuker:
     async def unlock_smoke(self, uid):
         return await self._set_floats(uid, [(33, 1.0)])
 
-    async def unlock_cars(self, uid):
-        await self.load(uid)
-        td    = self.get_token_data(uid)
-        email = td.get("email") if td else None
-        d     = deepcopy(self.get_record(uid, email))
-        if not d or not d.get("Name"):
-            return {"ok": False, "message": "Could not load account data."}
-        car_status = d.get("carIDnStatus", {})
-        if not car_status:
-            car_status = {"carGeneratedIDs": [], "carStatus": []}
-        statuses = car_status.get("carStatus", [])
-        while len(statuses) < 150:
-            statuses.append(0)
-        for i in range(len(statuses)):
-            statuses[i] = 1
-        car_status["carStatus"] = statuses
-        d["carIDnStatus"] = car_status
-        return await self._save(uid, d)
-
     async def unlock_animations(self, uid):
         await self.load(uid)
         td    = self.get_token_data(uid)
@@ -1056,6 +1022,302 @@ class CPMNuker:
         return {"ok":True,"bugs_fixed":bugs} if result.get("ok") else {"ok":False,"message":"FIX_FAILED"}
 
 
+
+
+
+
+    def _unity_headers(self, auth: str) -> dict:
+        return {
+            **GAME_HEADERS,
+            "Authorization": f"Bearer {auth}",
+            "Content-Type": "application/json; charset=utf-8",
+            "X-Firebase-Lite-Sdk": "1",
+        }
+
+    def _json_ok(self, r) -> bool:
+        if not r or not isinstance(r, dict):
+            return False
+        res = r.get("result")
+        if res in (1, "1", True):
+            return True
+        if isinstance(res, str):
+            if res.strip() == "1":
+                return True
+            if '"result":1' in res.replace(" ", ""):
+                return True
+            try:
+                j = json.loads(res)
+                if j == 1 or (isinstance(j, dict) and j.get("result") in (1, "1", True)):
+                    return True
+            except Exception:
+                pass
+        return False
+
+    async def get_all_cars(self, auth: str, car_ids: list = None):
+        """Load garage via TestGetAllCars (working)."""
+        r = await self._post(CARS_GET_URL, {"data": ""}, self._unity_headers(auth))
+        cars = []
+        if r:
+            res = r.get("result")
+            if isinstance(res, str):
+                try:
+                    res = json.loads(res)
+                except Exception:
+                    res = None
+            if isinstance(res, list):
+                cars = res
+            elif isinstance(res, dict):
+                cars = list(res.values())
+        normalized = []
+        for c in cars:
+            if isinstance(c, dict):
+                normalized.append(c)
+            elif isinstance(c, str):
+                try:
+                    normalized.append(json.loads(c))
+                except Exception:
+                    pass
+        log.info(f"get_all_cars count={len(normalized)}")
+        return {"ok": len(normalized) > 0, "data": normalized, "message": f"count={len(normalized)}"}
+
+    async def _market_list(self, auth: str) -> list:
+        r = await self._post(CARS_MARKET_LIST_URL, {"data": 50}, self._unity_headers(auth))
+        if not r:
+            return []
+        try:
+            res = r.get("result", "[]")
+            if isinstance(res, str):
+                return json.loads(res)
+            return res if isinstance(res, list) else []
+        except Exception:
+            return []
+
+    async def _market_full(self, auth: str, owner: str, car_id: str):
+        r = await self._post(
+            CARS_MARKET_FULL_URL,
+            {"data": [owner, str(car_id), "20"]},
+            self._unity_headers(auth),
+        )
+        if not r:
+            return None
+        try:
+            res = r.get("result")
+            if isinstance(res, str):
+                return json.loads(res)
+            return res if isinstance(res, dict) else None
+        except Exception:
+            return None
+
+    async def _market_targets(self, auth: str, count: int = 15) -> list:
+        market = await self._market_list(auth)
+        out = []
+        for car in market[: max(count, 5)]:
+            car_id = str(car.get("CarID") or car.get("carID") or "")
+            owner = car.get("ownerAccountID") or car.get("ownerID") or ""
+            if not car_id or not owner:
+                continue
+            full = await self._market_full(auth, owner, car_id)
+            if full:
+                out.append({
+                    "full": full,
+                    "car_id": car_id,
+                    "owner": owner,
+                    "price": car.get("price"),
+                })
+        return out
+
+    async def _purchase_car(self, auth_b: str, target_car: dict, car_data: dict, car_id: int) -> bool:
+        """Inject one car onto target via WSPurchaseCarV3."""
+        src = json.loads(json.dumps(car_data))
+        if src.get("Vynils") is None:
+            src["Vynils"] = {"allVynils": [], "CarID": int(car_id)}
+        src["CarID"] = int(car_id)
+        if isinstance(src.get("Vynils"), dict):
+            src["Vynils"]["CarID"] = int(car_id)
+
+        payload = {
+            "ownerID": target_car["full"].get("ownerID", ""),
+            "ownerName": target_car["full"].get("ownerName", ""),
+            "description": target_car["full"].get("description", ""),
+            "CarID": int(target_car["car_id"]),
+            "carGeneratedID": target_car["full"].get("carGeneratedID", ""),
+            "ownerAccountID": target_car["owner"],
+            "oneCar": src,
+            "vynilOneCar": src.get("Vynils") or {"allVynils": [], "CarID": int(car_id)},
+            "loadedLocalCar": {"instanceID": -226578},
+            "price": target_car.get("price"),
+            "SellingCar": SELLING_CAR_TEMPLATE,
+            "willReject": False,
+            "dislike": 1,
+            "like": 0,
+            "liked": False,
+            "disliked": False,
+            "mode": 1,
+        }
+        r = await self._post(
+            CARS_PURCHASE_URL,
+            {"data": json.dumps(payload)},
+            self._unity_headers(auth_b),
+        )
+        log.info(f"WSPurchaseCarV3 car={car_id} -> {str(r)[:140]}")
+        return bool(r) and r.get("result") == 1
+
+    async def inject_cars_market(self, auth_a: str, auth_b: str, from_cars: list) -> dict:
+        """Copy cars A→B via WSGetCarListV3 + WSGetFullCarV3 + WSPurchaseCarV3."""
+        if not from_cars:
+            return {"ok": True, "saved": 0, "failed": 0, "message": "no cars"}
+
+        targets = await self._market_targets(auth_b, count=min(20, len(from_cars)))
+        if not targets:
+            return {
+                "ok": False,
+                "saved": 0,
+                "failed": len(from_cars),
+                "message": "No marketplace listings (WSGetCarListV3 empty)",
+            }
+
+        saved = failed = 0
+        t_idx = 0
+        for i, car in enumerate(from_cars):
+            if not isinstance(car, dict):
+                failed += 1
+                continue
+            car_id = car.get("CarID") or car.get("carID") or i
+            try:
+                car_id = int(car_id)
+            except Exception:
+                car_id = i
+
+            if t_idx >= len(targets):
+                targets = await self._market_targets(auth_b, count=min(20, len(from_cars) - i))
+                t_idx = 0
+                if not targets:
+                    failed += len(from_cars) - i
+                    break
+
+            target = targets[t_idx]
+            t_idx += 1
+            if await self._purchase_car(auth_b, target, car, car_id):
+                saved += 1
+            else:
+                failed += 1
+            await asyncio.sleep(0.05)
+
+        return {
+            "ok": saved > 0 and failed == 0,
+            "saved": saved,
+            "failed": failed,
+            "message": f"saved={saved} failed={failed}",
+        }
+
+    async def _save_player_json(self, auth: str, data: dict):
+        headers = self._unity_headers(auth)
+        content = json.dumps(data, ensure_ascii=False)
+        last = None
+        for url in PLAYER_JSON_SAVE_URLS:
+            for pl in ({"data": content}, {"data": data}):
+                r = await self._post(url, pl, headers)
+                last = r
+                log.info(f"player_json {url.split('/')[-1]} -> {str(r)[:160]}")
+                if self._json_ok(r):
+                    return True, "OK"
+        return False, f"JSON_SAVE_FAILED: {str(last)[:120]}"
+
+    async def clone_account(self, uid: int, to_email: str, to_password: str):
+        """Clone source → target: player data + cars (WSPurchaseCarV3)."""
+        to_email = (to_email or "").strip().lower()
+        to_password = to_password or ""
+        if not to_email or "@" not in to_email:
+            return {"ok": False, "message": "Invalid target email"}
+        if len(to_password) < 6:
+            return {"ok": False, "message": "Target password min 6 chars"}
+
+        ok, msg, src_auth = await self.get_auth(uid)
+        if not ok:
+            return {"ok": False, "message": msg or "Source not logged in"}
+
+        await self.load(uid, force=True)
+        td = self.get_token_data(uid)
+        src_email = td.get("email") if td else None
+        from_data = deepcopy(self.get_record(uid, src_email) or {})
+        if not from_data:
+            return {"ok": False, "message": "Could not load source data. Tap Refresh first."}
+
+        from_id = str(from_data.get("localID") or "")
+        if not from_id:
+            from_id = str((td or {}).get("firebase_uid") or "")[:8].upper() or "SOURCE01"
+
+        cars_res = await self.get_all_cars(src_auth)
+        from_cars = cars_res.get("data") or []
+        log.info(f"clone cars={len(from_cars)} from_id={from_id}")
+
+        login_status = await self.login(to_email, to_password)
+        if not login_status.get("ok"):
+            return {"ok": False, "message": f"Target login failed: {login_status.get('message')}"}
+
+        to_auth = login_status["auth"]
+        to_fuid = login_status.get("firebase_uid") or ""
+
+        import random
+        to_id = "".join(random.choice("0123456789ABCDEF") for _ in range(8))
+
+        to_data = deepcopy(from_data)
+        to_data.pop("allData", None)
+        to_data["Name"] = "NewPlayer69"
+        to_data["localID"] = to_id
+
+        data_ok, data_msg = await self._save_player_json(to_auth, to_data)
+        if not data_ok:
+            ok2, msg2 = await self._send(to_auth, to_data, to_fuid or to_id, original=None)
+            data_ok = ok2
+            data_msg = data_msg if data_ok else f"{data_msg} | {msg2}"
+
+        cars_result = {"ok": True, "saved": 0, "failed": 0, "message": "no cars on source"}
+        if from_cars:
+            cars_result = await self.inject_cars_market(src_auth, to_auth, from_cars)
+
+        STORE["stats"]["total_actions"] = STORE["stats"].get("total_actions", 0) + 1
+        save_store(STORE)
+        update_daily_stats("actions")
+
+        if not from_cars:
+            return {
+                "ok": data_ok,
+                "message": "Data cloned but SOURCE had 0 cars." if data_ok else f"Failed: {data_msg}",
+                "to_email": to_email, "to_id": to_id, "from_id": from_id,
+                "cars": 0, "cars_ok": False, "cars_saved": 0, "cars_failed": 0,
+                "data_ok": data_ok, "data_message": data_msg,
+            }
+
+        if cars_result.get("saved", 0) == 0:
+            return {
+                "ok": False,
+                "message": (
+                    f"Data {'ok' if data_ok else 'fail'} but cars NOT saved "
+                    f"({cars_result.get('message')}). Source had {len(from_cars)} cars."
+                ),
+                "to_email": to_email, "to_id": to_id, "from_id": from_id,
+                "cars": len(from_cars), "cars_ok": False,
+                "cars_saved": 0, "cars_failed": cars_result.get("failed", len(from_cars)),
+                "data_ok": data_ok,
+            }
+
+        return {
+            "ok": True,
+            "message": "OK",
+            "to_email": to_email,
+            "to_id": to_id,
+            "from_id": from_id,
+            "cars": len(from_cars),
+            "cars_ok": cars_result.get("failed", 0) == 0,
+            "cars_saved": cars_result.get("saved", 0),
+            "cars_failed": cars_result.get("failed", 0),
+            "cars_message": cars_result.get("message", ""),
+            "data_ok": data_ok,
+            "data_message": data_msg,
+        }
+
+
 nuker = CPMNuker()
 
 
@@ -1075,7 +1337,7 @@ class T:
     def welcome(name, username, uid):
         now = datetime.now()
         return (
-            f"{B}\n🔥 𝗣𝗥𝗜𝗠𝗢𝗖𝗣𝗠𝗧𝗢𝗢𝗟 🔥\n{B}\n\n"
+            f"{B}\n🚗 CPM1 BOT🚗\n{B}\n\n"
             f"  ╭──── 𝗪𝗘𝗟𝗖𝗢𝗠𝗘 ────╮\n"
             f"  │ 👤 {name}\n"
             f"  │ 📱 @{username or 'N/A'}\n"
@@ -1279,10 +1541,9 @@ class K:
             [InlineKeyboardButton(text="💨 Smoke",   callback_data="f_smoke"),
              InlineKeyboardButton(text="🎭 Anims",   callback_data="f_anims")],
             [InlineKeyboardButton(text="🛞 Wheels",  callback_data="f_wheels"),
-             InlineKeyboardButton(text="🚗 Unlock Cars", callback_data="f_cars")],
-            [InlineKeyboardButton(text="🏠 Houses",  callback_data="f_houses"),
-             InlineKeyboardButton(text="🎮 Levels",  callback_data="f_levels")],
-            [InlineKeyboardButton(text="🏅 Rank",    callback_data="f_rank")],
+             InlineKeyboardButton(text="🏠 Houses",  callback_data="f_houses")],
+            [InlineKeyboardButton(text="🎮 Levels",  callback_data="f_levels"),
+             InlineKeyboardButton(text="🏅 Rank",    callback_data="f_rank")],
             [InlineKeyboardButton(text="🚀 ★ UNLOCK ALL ★", callback_data="f_all")],
             [InlineKeyboardButton(text="◂ Back", callback_data="back_home")],
         ])
@@ -1295,6 +1556,7 @@ class K:
             [InlineKeyboardButton(text="🏆 Wins",    callback_data="s_wins"),
              InlineKeyboardButton(text="😞 Loses",   callback_data="s_loses")],
             [InlineKeyboardButton(text="🔧 Fix Account Bugs", callback_data="s_fix")],
+            [InlineKeyboardButton(text="🧬 Clone Account", callback_data="s_clone")],
             [InlineKeyboardButton(text="◂ Back", callback_data="back_home")],
         ])
 
@@ -1417,6 +1679,10 @@ class SWins(StatesGroup):
 class SLoses(StatesGroup):
     val = State()
 
+class SClone(StatesGroup):
+    email = State()
+    password = State()
+
 class SAdmin(StatesGroup):
     ban             = State()
     unban           = State()
@@ -1441,6 +1707,8 @@ class SAdmin(StatesGroup):
 #  🤖 BOT
 # ═══════════════════════════════════════════
 
+if not BOT_TOKEN or BOT_TOKEN.startswith("PUT_"):
+    raise SystemExit("Set BOT_TOKEN env var (token was exposed — revoke in @BotFather)")
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp  = Dispatcher(storage=MemoryStorage())
 rt  = Router()
@@ -1821,7 +2089,6 @@ FEAT_MAP = {
     "f_smoke":  ("💨 Smoke",         nuker.unlock_smoke),
     "f_anims":  ("🎭 Animations",    nuker.unlock_animations),
     "f_wheels": ("🛞 Wheels",        nuker.unlock_wheels),
-    "f_cars":   ("🚗 Unlock Cars",   nuker.unlock_cars),
     "f_houses": ("🏠 Houses",        nuker.unlock_houses),
     "f_levels": ("🎮 All Levels",    nuker.complete_all_levels),
     "f_rank":   ("🏅 Max Rank",      nuker.set_rank),
@@ -1981,6 +2248,65 @@ async def cb_s_fix(cb: CallbackQuery):
         "𝗔𝗖𝗖𝗢𝗨𝗡𝗧 𝗙𝗜𝗫𝗘𝗗" if r.get("ok") else "𝗙𝗔𝗜𝗟𝗘𝗗",
         f"✔ {r.get('bugs_fixed',0)} bugs fixed" if r.get("ok") else r.get("message",""),
         K.back_home())
+
+
+
+@rt.callback_query(F.data == "s_clone")
+async def cb_s_clone(cb: CallbackQuery, state: FSMContext):
+    if not nuker.get_token(cb.from_user.id):
+        await cb.answer("✗ Sign in first!", show_alert=True); return
+    await state.set_state(SClone.email)
+    await cb.message.edit_text(
+        hdr("🧬", "𝗖𝗟𝗢𝗡𝗘 𝗔𝗖𝗖𝗢𝗨𝗡𝗧")
+        + "\n\n  Copies your current account data + cars\n"
+        "  onto another CPM account.\n\n"
+        "  Enter TARGET account email:",
+        reply_markup=K.cancel(),
+    )
+    await cb.answer()
+
+
+@rt.message(SClone.email)
+async def p_clone_email(msg: Message, state: FSMContext):
+    email = (msg.text or "").strip()
+    if "@" not in email or "." not in email.split("@")[-1]:
+        await msg.answer("  ✗ Invalid email.", reply_markup=K.cancel()); return
+    await state.update_data(clone_email=email)
+    await state.set_state(SClone.password)
+    await msg.answer(
+        hdr("🔑", "𝗧𝗔𝗥𝗚𝗘𝗧 𝗣𝗔𝗦𝗦𝗪𝗢𝗥𝗗")
+        + f"\n\n  Target: <code>{email}</code>\n\n  Enter target password:",
+        reply_markup=K.cancel(),
+    )
+
+
+@rt.message(SClone.password)
+async def p_clone_password(msg: Message, state: FSMContext):
+    password = (msg.text or "").strip()
+    data = await state.get_data()
+    email = data.get("clone_email", "")
+    await state.clear()
+    try:
+        await msg.delete()
+    except Exception:
+        pass
+    ld = await msg.answer(
+        f"{B}\n  🧬  𝗖𝗟𝗢𝗡𝗜𝗡𝗚\n{B}\n\n"
+        f"  Source → <code>{email}</code>\n"
+        "  ⏳ Loading source + cars..."
+    )
+    r = await nuker.clone_account(msg.from_user.id, email, password)
+    if r.get("ok"):
+        detail = (
+            f"✔ Target: <code>{r.get('to_email')}</code>\n"
+            f"🆔 New ID: <code>{r.get('to_id')}</code>\n"
+            f"🚗 Cars: {r.get('cars', 0)} "
+            f"({'ok' if r.get('cars_ok') else 'partial'})\n\n"
+            "  Restart the game on the target account."
+        )
+        await result_msg(ld, True, "𝗖𝗟𝗢𝗡𝗘 𝗗𝗢𝗡𝗘", detail, K.back_home())
+    else:
+        await result_msg(ld, False, "𝗖𝗟𝗢𝗡𝗘 𝗙𝗔𝗜𝗟𝗘𝗗", r.get("message", ""), K.back_home())
 
 
 # ═══════════════════════════════════════════
@@ -2238,4 +2564,414 @@ async def p_unban(msg: Message, state: FSMContext):
 @rt.callback_query(F.data == "a_kick")
 async def cb_a_kick(cb: CallbackQuery, state: FSMContext):
     if not has_admin(cb.from_user.id,"admin"): await cb.answer("✗",show_alert=True); return
-    # Dodata funkcionalnost otključavanja automobila ("unlock_cars") unutar funkcija, u registar funkcija (FEAT_MAP), kao i u tastaturu (K.feat).
+    await state.set_state(SAdmin.kick)
+    await cb.message.edit_text(hdr("👢","𝗞𝗜𝗖𝗞")+"\n\n  Enter user ID:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.message(SAdmin.kick)
+async def p_kick(msg: Message, state: FSMContext):
+    try: uid = int(msg.text.strip())
+    except: await msg.answer("  ✗ Invalid ID."); return
+    if uid == OWNER_ID: await msg.answer("  ✗ Cannot kick owner!", reply_markup=K.back_admin()); await state.clear(); return
+    await state.clear()
+    store_remove_user(uid); nuker.delete_token(uid)
+    admin_log(msg.from_user.id,"KICKED",str(uid))
+    try: await bot.send_message(uid, hdr("👢","𝗞𝗜𝗖𝗞𝗘𝗗")+"\n\n  Access removed.")
+    except: pass
+    await msg.answer(f"  👢 <code>{uid}</code> kicked!", reply_markup=K.back_admin())
+
+
+@rt.callback_query(F.data == "a_expiry")
+async def cb_a_expiry(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"admin"): await cb.answer("✗",show_alert=True); return
+    await state.set_state(SAdmin.expiry_id)
+    await cb.message.edit_text(hdr("⏰","𝗦𝗘𝗧 𝗘𝗫𝗣𝗜𝗥𝗬")+"\n\n  Enter user ID:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.message(SAdmin.expiry_id)
+async def p_expiry_id(msg: Message, state: FSMContext):
+    try: uid = int(msg.text.strip())
+    except: await msg.answer("  ✗ Invalid ID."); return
+    await state.update_data(target=uid)
+    await state.set_state(SAdmin.expiry_dy)
+    await msg.answer(f"  Enter days for <code>{uid}</code> (0 = remove):", reply_markup=K.back_admin())
+
+
+@rt.message(SAdmin.expiry_dy)
+async def p_expiry_dy(msg: Message, state: FSMContext):
+    try: days = int(msg.text.strip()); assert days >= 0
+    except: await msg.answer("  ✗ Invalid."); return
+    d   = await state.get_data(); uid = d.get("target")
+    await state.clear()
+    if days == 0:
+        store_remove_expiry(uid)
+        await msg.answer(f"  ✔ Expiry removed for <code>{uid}</code>", reply_markup=K.back_admin())
+    else:
+        store_set_expiry(uid, days)
+        admin_log(msg.from_user.id,f"EXPIRY_{days}d",str(uid))
+        try: await bot.send_message(uid, f"  ⏰ Access expires in {days} days.")
+        except: pass
+        await msg.answer(f"  ✔ <code>{uid}</code> expires in {days} days", reply_markup=K.back_admin())
+
+
+@rt.callback_query(F.data == "a_profile")
+async def cb_a_profile(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"admin"): await cb.answer("✗",show_alert=True); return
+    await state.set_state(SAdmin.profile_id)
+    await cb.message.edit_text(hdr("ℹ","𝗨𝗦𝗘𝗥 𝗣𝗥𝗢𝗙𝗜𝗟𝗘")+"\n\n  Enter user ID:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.message(SAdmin.profile_id)
+async def p_profile_id(msg: Message, state: FSMContext):
+    try: uid = int(msg.text.strip())
+    except: await msg.answer("  ✗ Invalid ID."); return
+    await state.clear()
+    info  = STORE.get("users",{}).get(str(uid),{})
+    name  = info.get("name","Unknown")
+    un    = info.get("username","N/A")
+    last  = info.get("last_seen","N/A")[:16].replace("T"," ")
+    role  = ADMINS.get(uid,"user")
+    vip   = "💎 Yes" if uid in VIP_USERS else "No"
+    st    = "🚫 Banned" if uid in BANNED else ("✔ Allowed" if uid in ALLOWED_USERS else "⏳ Pending")
+    exp   = EXPIRY.get(str(uid),"None")
+    if exp != "None":
+        try: exp = datetime.fromisoformat(exp).strftime("%d %b %Y")
+        except: pass
+    warns = store_get_warnings(uid)
+    note  = store_get_note(uid)
+    txt   = (
+        f"{B}\n  ℹ  𝗣𝗥𝗢𝗙𝗜𝗟𝗘\n{B}\n\n"
+        f"  👤 Name:     {name}\n"
+        f"  📱 Username: @{un}\n"
+        f"  🆔 ID:       <code>{uid}</code>\n"
+        f"  📊 Status:   {st}\n"
+        f"  🛡 Role:     {role}\n"
+        f"  💎 VIP:      {vip}\n"
+        f"  ⏰ Expiry:   {exp}\n"
+        f"  📅 Last:     {last}\n"
+        f"  ⚠ Warns:    {len(warns)}/3"
+    )
+    if note: txt += f"\n  📝 Note: {note}"
+    await msg.answer(txt, reply_markup=K.back_admin())
+
+
+# ── VIP ───────────────────────────────────
+
+@rt.callback_query(F.data == "a_addvip")
+async def cb_a_addvip(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"superadmin"): await cb.answer("✗",show_alert=True); return
+    await state.set_state(SAdmin.addvip)
+    await cb.message.edit_text(hdr("💎","𝗔𝗗𝗗 𝗩𝗜𝗣")+"\n\n  Enter user ID:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.message(SAdmin.addvip)
+async def p_addvip(msg: Message, state: FSMContext):
+    try: uid = int(msg.text.strip())
+    except: await msg.answer("  ✗ Invalid ID."); return
+    await state.clear()
+    store_add_vip(uid); admin_log(msg.from_user.id,"ADD_VIP",str(uid))
+    try: await bot.send_message(uid, "  💎 You are now VIP!")
+    except: pass
+    await msg.answer(f"  💎 <code>{uid}</code> is now VIP!", reply_markup=K.back_admin())
+
+
+@rt.callback_query(F.data == "a_rmvip")
+async def cb_a_rmvip(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"superadmin"): await cb.answer("✗",show_alert=True); return
+    await state.set_state(SAdmin.rmvip)
+    await cb.message.edit_text(hdr("💎","𝗥𝗘𝗠 𝗩𝗜𝗣")+"\n\n  Enter user ID:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.message(SAdmin.rmvip)
+async def p_rmvip(msg: Message, state: FSMContext):
+    try: uid = int(msg.text.strip())
+    except: await msg.answer("  ✗ Invalid ID."); return
+    await state.clear()
+    store_remove_vip(uid)
+    await msg.answer(f"  ✔ VIP removed for <code>{uid}</code>", reply_markup=K.back_admin())
+
+
+# ═══════════════════════════════════════════
+#  🖼 UPLOAD PHOTO (Owner only)
+# ═══════════════════════════════════════════
+
+@rt.callback_query(F.data == "a_photo")
+async def cb_a_photo(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"owner"):
+        await cb.answer("✗ Owner only!", show_alert=True); return
+    await state.set_state(SAdmin.upload_photo)
+    current = get_bot_photo()
+    txt = f"{B}\n  🖼  𝗨𝗣𝗗𝗔𝗧𝗘 𝗕𝗢𝗧 𝗣𝗛𝗢𝗧𝗢\n{B}\n\n"
+    if current:
+        txt += "  ◆ Current photo is set.\n\n"
+    txt += "  Send a new photo to update it.\n  This photo shows on welcome screen."
+    await cb.message.edit_text(txt, reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.message(SAdmin.upload_photo, F.photo)
+async def p_upload_photo(msg: Message, state: FSMContext):
+    if not has_admin(msg.from_user.id,"owner"):
+        await msg.answer("  ✗ Owner only!"); await state.clear(); return
+    file_id = msg.photo[-1].file_id
+    set_bot_photo(file_id)
+    admin_log(msg.from_user.id,"UPDATE_PHOTO")
+    await state.clear()
+    await msg.answer(
+        f"{B}\n  ✅  𝗣𝗛𝗢𝗧𝗢 𝗨𝗣𝗗𝗔𝗧𝗘𝗗\n{B}\n\n"
+        "  ✔ Bot welcome photo updated!\n"
+        "  ▸ It will show for new users.",
+        reply_markup=K.back_admin()
+    )
+
+
+# ═══════════════════════════════════════════
+#  📢 BROADCAST
+# ═══════════════════════════════════════════
+
+@rt.callback_query(F.data == "a_bcast_menu")
+async def cb_bcast_menu(cb: CallbackQuery):
+    if not has_admin(cb.from_user.id,"superadmin"): await cb.answer("✗",show_alert=True); return
+    await cb.message.edit_text(
+        f"{B}\n  📢  𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧\n{B}\n\n"
+        f"  👥 All: {len(ALLOWED_USERS)}  💎 VIP: {len(VIP_USERS)}",
+        reply_markup=K.broadcast_menu())
+    await cb.answer()
+
+
+@rt.callback_query(F.data == "bcast_text")
+async def cb_bcast_text(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"superadmin"): await cb.answer("✗",show_alert=True); return
+    await state.update_data(bcast_target="all")
+    await state.set_state(SAdmin.bcast_text)
+    await cb.message.edit_text(hdr("📢","𝗧𝗘𝗫𝗧 𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧")+f"\n\n  Message to all {len(ALLOWED_USERS)} users:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.callback_query(F.data == "bcast_vip")
+async def cb_bcast_vip(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"superadmin"): await cb.answer("✗",show_alert=True); return
+    await state.update_data(bcast_target="vip")
+    await state.set_state(SAdmin.bcast_text)
+    await cb.message.edit_text(hdr("💎","𝗩𝗜𝗣 𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧")+f"\n\n  Message to {len(VIP_USERS)} VIPs:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.callback_query(F.data == "bcast_photo")
+async def cb_bcast_photo(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"superadmin"): await cb.answer("✗",show_alert=True); return
+    await state.update_data(bcast_target="all")
+    await state.set_state(SAdmin.bcast_photo)
+    await cb.message.edit_text(hdr("🖼","𝗣𝗛𝗢𝗧𝗢 𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧")+"\n\n  Send a photo:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.message(SAdmin.bcast_photo, F.photo)
+async def p_bcast_photo_file(msg: Message, state: FSMContext):
+    await state.update_data(bcast_photo_id=msg.photo[-1].file_id)
+    await state.set_state(SAdmin.bcast_photo_cap)
+    await msg.answer("  ✔ Photo received!\n  Type caption:", reply_markup=K.back_admin())
+
+
+@rt.message(SAdmin.bcast_photo, F.text)
+async def p_bcast_photo_url(msg: Message, state: FSMContext):
+    await state.update_data(bcast_photo_id=msg.text.strip())
+    await state.set_state(SAdmin.bcast_photo_cap)
+    await msg.answer("  ✔ URL set!\n  Type caption:", reply_markup=K.back_admin())
+
+
+@rt.message(SAdmin.bcast_photo_cap)
+async def p_bcast_photo_cap(msg: Message, state: FSMContext):
+    d = await state.get_data(); await state.clear()
+    caption = msg.text.strip()
+    photo   = d.get("bcast_photo_id","")
+    target  = d.get("bcast_target","all")
+    targets = VIP_USERS if target=="vip" else ALLOWED_USERS
+    bc_cap  = f"{B}\n  📢  𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧\n{B}\n\n  {caption}"
+    s=f=0
+    for uid in list(targets):
+        try: await bot.send_photo(uid, photo=photo, caption=bc_cap); s+=1
+        except:
+            try: await bot.send_message(uid, bc_cap); s+=1
+            except: f+=1
+        await asyncio.sleep(0.05)
+    admin_log(msg.from_user.id,f"BCAST_PHOTO s={s} f={f}")
+    add_broadcast_history(msg.from_user.id,"photo",caption,s,f)
+    await msg.answer(f"  📢 Done!\n  ✔ {s} sent  ✗ {f} failed", reply_markup=K.back_admin())
+
+
+@rt.message(SAdmin.bcast_text)
+async def p_bcast_text(msg: Message, state: FSMContext):
+    d = await state.get_data(); await state.clear()
+    txt     = msg.text.strip()
+    target  = d.get("bcast_target","all")
+    targets = VIP_USERS if target=="vip" else ALLOWED_USERS
+    bc = f"{B}\n  📢  𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧\n{B}\n\n  {txt}"
+    s=f=0
+    for uid in list(targets):
+        try: await bot.send_message(uid, bc); s+=1
+        except: f+=1
+        await asyncio.sleep(0.05)
+    admin_log(msg.from_user.id,f"BCAST_TEXT s={s} f={f}")
+    add_broadcast_history(msg.from_user.id,"text",txt,s,f)
+    await msg.answer(f"  📢 Done!\n  ✔ {s} sent  ✗ {f} failed", reply_markup=K.back_admin())
+
+
+# ── Owner: Add/Remove Admin, Maintenance, Reset ───
+
+@rt.callback_query(F.data == "a_addadm")
+async def cb_a_addadm(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"owner"): await cb.answer("✗ Owner only!",show_alert=True); return
+    await state.set_state(SAdmin.addadm_id)
+    await cb.message.edit_text(hdr("➕","𝗔𝗗𝗗 𝗔𝗗𝗠𝗜𝗡")+"\n\n  Enter user ID:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.message(SAdmin.addadm_id)
+async def p_addadm_id(msg: Message, state: FSMContext):
+    try: uid = int(msg.text.strip())
+    except: await msg.answer("  ✗ Invalid ID."); return
+    await state.update_data(target=uid)
+    await state.set_state(SAdmin.addadm_lv)
+    await msg.answer(
+        f"  Select role for <code>{uid}</code>:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👮 Moderator",  callback_data="sl_moderator")],
+            [InlineKeyboardButton(text="🛡 Admin",      callback_data="sl_admin")],
+            [InlineKeyboardButton(text="⭐ Super Admin", callback_data="sl_superadmin")],
+            [InlineKeyboardButton(text="◂ Cancel",      callback_data="admin_menu")],
+        ]))
+
+
+@rt.callback_query(F.data.startswith("sl_"))
+async def cb_sl(cb: CallbackQuery, state: FSMContext):
+    role = cb.data[3:]
+    d    = await state.get_data(); t = d.get("target")
+    if not t: await cb.answer("✗"); await state.clear(); return
+    await state.clear()
+    store_add_admin(t, role)
+    admin_log(cb.from_user.id,f"ADD_ADMIN_{role}",str(t))
+    try: await cb.message.edit_text(f"  ✔ <code>{t}</code> → {role}", reply_markup=K.back_admin())
+    except: pass
+    try: await bot.send_message(t, f"  🎉 You are now {role}!\n  Use /admin")
+    except: pass
+    await cb.answer()
+
+
+@rt.callback_query(F.data == "a_rmadm")
+async def cb_a_rmadm(cb: CallbackQuery, state: FSMContext):
+    if not has_admin(cb.from_user.id,"owner"): await cb.answer("✗ Owner only!",show_alert=True); return
+    await state.set_state(SAdmin.rmadm)
+    await cb.message.edit_text(hdr("➖","𝗥𝗘𝗠 𝗔𝗗𝗠𝗜𝗡")+"\n\n  Enter user ID:", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.message(SAdmin.rmadm)
+async def p_rmadm(msg: Message, state: FSMContext):
+    try: uid = int(msg.text.strip())
+    except: await msg.answer("  ✗ Invalid ID."); return
+    if uid == OWNER_ID: await msg.answer("  ✗ Cannot remove owner!", reply_markup=K.back_admin()); await state.clear(); return
+    await state.clear()
+    store_remove_admin(uid); admin_log(msg.from_user.id,"REM_ADMIN",str(uid))
+    await msg.answer(f"  ✔ <code>{uid}</code> demoted!", reply_markup=K.back_admin())
+
+
+@rt.callback_query(F.data == "a_maint")
+async def cb_a_maint(cb: CallbackQuery):
+    if not has_admin(cb.from_user.id,"owner"): await cb.answer("✗ Owner only!",show_alert=True); return
+    STORE["maintenance"] = not STORE.get("maintenance",False)
+    save_store(STORE)
+    st = "🔴 ON" if STORE["maintenance"] else "🟢 OFF"
+    admin_log(cb.from_user.id,f"MAINTENANCE_{st}")
+    await cb.message.edit_text(f"  🔧 Maintenance: {st}", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+@rt.callback_query(F.data == "a_reset")
+async def cb_a_reset(cb: CallbackQuery):
+    if not has_admin(cb.from_user.id,"owner"): await cb.answer("✗ Owner only!",show_alert=True); return
+    STORE["stats"] = {"total_logins":0,"total_actions":0,"total_unlocks":0}
+    STORE["daily_stats"] = {}
+    save_store(STORE); admin_log(cb.from_user.id,"RESET_STATS")
+    await cb.message.edit_text("  ✔ Stats reset!", reply_markup=K.back_admin())
+    await cb.answer()
+
+
+# ═══════════════════════════════════════════
+#  📋 COMMANDS
+# ═══════════════════════════════════════════
+
+@rt.message(Command("help"))
+async def cmd_help(msg: Message):
+    await msg.answer(
+        f"{B}\n  ❓  𝗛𝗘𝗟𝗣\n{B}\n\n"
+        "  /start  — Start bot\n"
+        "  /admin  — Admin panel\n"
+        "  /bulkadd — Bulk add users (admin)\n"
+        "  /help   — Help\n"
+        "  /status — Status\n"
+        "  /ping   — Ping\n\n"
+        "  Made with ❤ by PRIMOCPM"
+    )
+
+
+@rt.message(Command("status"))
+async def cmd_status(msg: Message):
+    uid   = msg.from_user.id
+    td    = nuker.get_token_data(uid)
+    up    = time.strftime('%H:%M:%S', time.gmtime(time.time()-START_TIME))
+    maint = "🔴" if is_maintenance() else "🟢"
+    txt   = f"{B}\n  🤖  𝗦𝗧𝗔𝗧𝗨𝗦\n{B}\n\n"
+    txt  += f"  Logged:  {'✔' if td else '✗'}\n"
+    if td: txt += f"  Email:   {td.get('email','—')}\n"
+    txt  += f"  Users:   {len(ALLOWED_USERS)}\n  Maint:   {maint}\n  Uptime:  {up}"
+    await msg.answer(txt)
+
+
+@rt.message(Command("ping"))
+async def cmd_ping(msg: Message):
+    t = time.time()
+    m = await msg.answer("  🏓 ...")
+    await m.edit_text(f"  🏓 Pong! {(time.time()-t)*1000:.0f}ms")
+
+
+# ═══════════════════════════════════════════
+#  🚀 MAIN
+# ═══════════════════════════════════════════
+
+async def main():
+    global START_TIME
+    START_TIME = time.time()
+
+    log.info("━"*40)
+    log.info("🔥ASH MAE CPM1 BOT🔥")
+    log.info(f"  Owner:  {OWNER_ID}")
+    log.info(f"  Users:  {len(ALLOWED_USERS)}")
+    log.info(f"  Brotli: {'✔' if HAS_BROTLI else '✗ pip install brotli'}")
+    log.info(f"  Crypto: {'✔' if HAS_CRYPTO else '✗ pip install pycryptodome'}")
+    log.info("━"*40)
+
+    await bot.set_my_commands([
+        BotCommand(command="start",  description="🎮 Start"),
+        BotCommand(command="admin",  description="👑 Admin"),
+        BotCommand(command="bulkadd", description="📥 Bulk add users"),
+        BotCommand(command="help",   description="❓ Help"),
+        BotCommand(command="status", description="📊 Status"),
+        BotCommand(command="ping",   description="🏓 Ping"),
+    ])
+
+    await dp.start_polling(bot, skip_updates=True)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        log.info("Stopped.")
+    except Exception as e:
+        log.error(f"Fatal: {e}\n{traceback.format_exc()}")
