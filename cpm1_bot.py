@@ -56,9 +56,9 @@ def health():
 # 🔑 TOKENS & KEYS
 # ═══════════════════════════════════════════════════════════
 
-BOT_TOKEN = '8929997917:AAGPZ8xWTf24GI8MlJ-dcPOGUQgNWQ9GIIY'
+BOT_TOKEN = '8800278295:AAFCYZOeJyrFzUr22eQ0KhhEX_nRfTIaA8M'
 bot = telebot.TeleBot(BOT_TOKEN)
-OWNER_ID  = 8003371335
+OWNER_ID  = 8884756222
 
 ADMIN_IDS = [8003371335, 8884756222]
 ALLOWED_KEYS = [ "FANTOM"]
