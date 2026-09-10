@@ -56,7 +56,7 @@ def health():
 # 🔑 TOKENS & KEYS
 # ═══════════════════════════════════════════════════════════
 
-BOT_TOKEN = '8929997917:AAGPZ8xWTf24GI8MlJ-dcPOGUQgNWQ9GIIY'
+BOT_TOKEN = '8682873022:AAGTMjGb0CG5VcoIzpgHbeG_NevQ4PPSNts'
 bot = telebot.TeleBot(BOT_TOKEN)
 OWNER_ID  = 8884756222
 
